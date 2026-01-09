@@ -1,0 +1,19 @@
+{
+	"/": [],
+	"/admin": [],
+	"/admin/campaigns": [],
+	"/admin/certificates": [],
+	"/admin/events": [],
+	"/admin/events/new": [],
+	"/admin/events/[id]": [],
+	"/admin/providers": [],
+	"/admin/templates": [],
+	"/events/[slug]": [],
+	"/login": [],
+	"/portal": [],
+	"/portal/certificates": [],
+	"/portal/login": [],
+	"/portal/prizes": [],
+	"/portal/verify": [],
+	"/verify": []
+}
