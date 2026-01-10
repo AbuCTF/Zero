@@ -249,7 +249,7 @@
 
     async function pollImportProgress(jobId: string) {
         const pollInterval = 1000; // 1 second
-        const maxAttempts = 300; // 5 minutes max
+        const maxAttempts = 1800; // 30 minutes max
         let attempts = 0;
         
         while (attempts < maxAttempts) {
@@ -514,7 +514,7 @@
                     </span>
                 </div>
                 <p class="text-sm text-muted-foreground">
-                    {event.slug} | {participants.length} participants
+                    {event.slug} | {formatNumber(totalParticipants)} participants
                 </p>
             </div>
             <div class="flex items-center gap-2">
