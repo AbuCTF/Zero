@@ -220,7 +220,7 @@ async def register_for_event(
         )
     
     # Check registration window
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     if event.registration_start and event.registration_start > now:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
