@@ -677,27 +677,28 @@ async def bulk_import_participants_task(
     skipped = 0
     errors_list = []
     
-    async with async_session() as db:
-        event_uuid = UUID(event_id)
-        
-        for i, p_data in enumerate(participants_data):
-            email = (p_data.get("email") or "").strip().lower()
+    try:
+        async with async_session() as db:
+            event_uuid = UUID(event_id)
             
-            if not email or "@" not in email:
-                errors_list.append({"row": i + 1, "error": "Invalid email"})
-                continue
-            
-            try:
-                # Check if exists
-                result = await db.execute(
-                    select(Participant).where(
-                        Participant.event_id == event_uuid,
-                        Participant.email == email,
-                    )
-                )
-                existing = result.scalar_one_or_none()
+            for i, p_data in enumerate(participants_data):
+                email = (p_data.get("email") or "").strip().lower()
                 
-                if existing:
+                if not email or "@" not in email:
+                    errors_list.append({"row": i + 1, "error": "Invalid email"})
+                    continue
+                
+                try:
+                    # Check if exists
+                    result = await db.execute(
+                        select(Participant).where(
+                            Participant.event_id == event_uuid,
+                            Participant.email == email,
+                        )
+                    )
+                    existing = result.scalar_one_or_none()
+                    
+                    if existing:
                     if update_existing:
                         was_updated = False
                         
@@ -790,23 +791,30 @@ async def bulk_import_participants_task(
                     await db.commit()
                     await update_progress(imported, updated, skipped, errors_list, total)
                     
-            except Exception as e:
-                errors_list.append({"row": i + 1, "email": email, "error": str(e)})
+                except Exception as e:
+                    errors_list.append({"row": i + 1, "email": email, "error": str(e)})
+            
+            # Final commit
+            await db.commit()
         
-        # Final commit
-        await db.commit()
+        await update_progress(imported, updated, skipped, errors_list, total, "completed")
+        
+        logger.info(f"Import completed: {imported} imported, {updated} updated, {skipped} skipped, {len(errors_list)} errors")
+        
+        return {
+            "imported": imported,
+            "updated": updated,
+            "skipped": skipped,
+            "errors": errors_list[:50],
+            "total_errors": len(errors_list),
+        }
     
-    await update_progress(imported, updated, skipped, errors_list, total, "completed")
-    
-    logger.info(f"Import completed: {imported} imported, {updated} updated, {skipped} skipped, {len(errors_list)} errors")
-    
-    return {
-        "imported": imported,
-        "updated": updated,
-        "skipped": skipped,
-        "errors": errors_list[:50],  # Limit errors returned
-        "total_errors": len(errors_list),
-    }
+    except Exception as e:
+        logger.error(f"Import task failed: {e}")
+        await update_progress(imported, updated, skipped, errors_list, total, "failed")
+        if redis:
+            await redis.hset(progress_key, "error", str(e))
+        raise
 
 
 # =============================================================================
