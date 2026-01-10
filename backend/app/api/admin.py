@@ -908,6 +908,7 @@ async def import_participants(
     request: Request = None,
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
+    redis=Depends(get_redis),
 ):
     """
     Flexible participant import supporting multiple formats:
@@ -917,6 +918,8 @@ async def import_participants(
     
     Only email is required - all other fields are auto-generated if missing.
     
+    For files with >100 participants, processing happens in background.
+    
     Behavior:
     - New participants are added
     - Existing participants (by email) are updated with new data if update_existing=True
@@ -925,6 +928,9 @@ async def import_participants(
     """
     import json as json_lib
     import re
+    from arq import create_pool
+    from arq.connections import RedisSettings
+    from urllib.parse import urlparse
     
     result = await db.execute(select(Event).where(Event.id == event_id))
     event = result.scalar_one_or_none()
@@ -960,16 +966,13 @@ async def import_participants(
             
     else:
         # CSV file - flexible column handling
-        # Store ALL columns, with known fields mapped and extras preserved
         known_fields = {"email", "e-mail", "username", "name", "full_name", "fullname", 
                         "team_name", "team", "rank", "position", "score", "points"}
         reader = csv.DictReader(io.StringIO(text))
         for row in reader:
-            # Normalize column names (lowercase, strip)
             normalized = {k.lower().strip(): v.strip() for k, v in row.items() if v}
             if "email" in normalized or "e-mail" in normalized:
                 email = normalized.get("email") or normalized.get("e-mail")
-                # Collect extra fields not in known_fields
                 extra_fields = {k: v for k, v in normalized.items() if k not in known_fields and v}
                 participants_data.append({
                     "email": email,
@@ -978,12 +981,63 @@ async def import_participants(
                     "team_name": normalized.get("team_name") or normalized.get("team"),
                     "rank": normalized.get("rank") or normalized.get("position"),
                     "score": normalized.get("score") or normalized.get("points"),
-                    "_extra": extra_fields,  # Store extra fields
+                    "_extra": extra_fields,
                 })
     
     if not participants_data:
         raise HTTPException(status_code=400, detail="No valid participants found in file")
     
+    # For large imports (>100), use background processing
+    if len(participants_data) > 100:
+        job_id = secrets.token_urlsafe(16)
+        
+        # Queue background job
+        parsed = urlparse(settings.redis_url)
+        redis_settings = RedisSettings(
+            host=parsed.hostname or "localhost",
+            port=parsed.port or 6379,
+            password=parsed.password,
+            database=int(parsed.path.lstrip("/") or 0),
+        )
+        pool = await create_pool(redis_settings)
+        await pool.enqueue_job(
+            "bulk_import_participants_task",
+            str(event_id),
+            participants_data,
+            generate_passwords,
+            update_existing,
+            job_id,
+        )
+        await pool.close()
+        
+        # Log import start
+        audit_log = AuditLog(
+            action="admin.import_participants_queued",
+            user_id=user.id,
+            actor_type="user",
+            resource_type="event",
+            resource_id=event_id,
+            ip_address=get_client_ip(request),
+            metadata={
+                "job_id": job_id,
+                "total_participants": len(participants_data),
+                "source_file": file.filename,
+            },
+        )
+        db.add(audit_log)
+        await db.flush()
+        
+        return ParticipantImportResponse(
+            success=True,
+            imported=0,
+            updated=0,
+            skipped=0,
+            errors=[],
+            message=f"Import queued for {len(participants_data)} participants. Check progress with job_id: {job_id}",
+            job_id=job_id,
+        )
+    
+    # For small imports, process synchronously
     imported = 0
     updated = 0
     skipped = 0
@@ -1149,6 +1203,37 @@ async def import_participants(
         skipped=skipped,
         errors=errors,
     )
+
+
+@router.get("/events/{event_id}/participants/import-progress/{job_id}")
+async def get_import_progress(
+    event_id: UUID,
+    job_id: str,
+    user: User = Depends(require_organizer),
+    redis=Depends(get_redis),
+):
+    """Get background import progress."""
+    progress_key = f"import_progress:{job_id}"
+    progress = await redis.hgetall(progress_key)
+    
+    if not progress:
+        raise HTTPException(status_code=404, detail="Import job not found or expired")
+    
+    # Decode bytes to strings
+    decoded = {}
+    for k, v in progress.items():
+        key = k.decode() if isinstance(k, bytes) else k
+        val = v.decode() if isinstance(v, bytes) else v
+        # Convert numeric strings to ints
+        if key in ["imported", "updated", "skipped", "errors", "total"]:
+            decoded[key] = int(val)
+        else:
+            decoded[key] = val
+    
+    return {
+        "success": True,
+        "progress": decoded,
+    }
 
 
 @router.post("/events/{event_id}/participants/import-csv", response_model=ParticipantImportResponse)

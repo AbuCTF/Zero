@@ -323,6 +323,8 @@ class ParticipantImportResponse(BaseResponse):
     updated: int = 0
     skipped: int
     errors: List[Dict[str, Any]]
+    job_id: Optional[str] = None  # For background imports
+    message: Optional[str] = None
 
 
 # =============================================================================

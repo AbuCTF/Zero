@@ -22,7 +22,8 @@
     let importFile = $state<File | null>(null);
     let importing = $state(false);
     let updateExisting = $state(true);
-    let importResult = $state<{ imported: number; updated: number; skipped: number; errors: any[] } | null>(null);
+    let importResult = $state<{ imported: number; updated: number; skipped: number; errors: any[]; job_id?: string; message?: string } | null>(null);
+    let importProgress = $state<{ status: string; progress: number; imported: number; updated: number; skipped: number; errors: any[]; total: number } | null>(null);
 
     // Results import
     let showResultsImportModal = $state(false);
@@ -185,6 +186,7 @@
         importing = true;
         error = '';
         importResult = null;
+        importProgress = null;
         
         try {
             const formData = new FormData();
@@ -201,13 +203,66 @@
                 throw new Error('Import failed');
             }
             
-            importResult = await response.json();
-            await loadEvent();
+            const result = await response.json();
+            
+            // Check if this is a background job
+            if (result.job_id) {
+                // Start polling for progress
+                await pollImportProgress(result.job_id);
+            } else {
+                importResult = result;
+                await loadEvent();
+            }
         } catch (e: any) {
             error = e.message || 'Failed to import participants';
         } finally {
             importing = false;
         }
+    }
+
+    async function pollImportProgress(jobId: string) {
+        const pollInterval = 1000; // 1 second
+        const maxAttempts = 300; // 5 minutes max
+        let attempts = 0;
+        
+        while (attempts < maxAttempts) {
+            attempts++;
+            
+            try {
+                const response = await fetch(`/api/admin/events/${eventId}/participants/import-progress/${jobId}`, {
+                    credentials: 'include'
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to fetch progress');
+                }
+                
+                const progress = await response.json();
+                importProgress = progress;
+                
+                if (progress.status === 'completed') {
+                    importResult = {
+                        imported: progress.imported,
+                        updated: progress.updated,
+                        skipped: progress.skipped,
+                        errors: progress.errors || []
+                    };
+                    importProgress = null;
+                    await loadEvent();
+                    return;
+                } else if (progress.status === 'failed') {
+                    throw new Error(progress.error || 'Import failed');
+                }
+                
+                // Wait before next poll
+                await new Promise(resolve => setTimeout(resolve, pollInterval));
+            } catch (e: any) {
+                error = e.message || 'Failed to fetch import progress';
+                return;
+            }
+        }
+        
+        error = 'Import timed out';
     }
 
     async function handleResultsImport() {
@@ -955,7 +1010,7 @@
         <div class="bg-card rounded-xl shadow-xl w-full max-w-md">
             <div class="px-6 py-4 border-b border-border flex items-center justify-between">
                 <h2 class="text-lg font-semibold">Import Participants</h2>
-                <button onclick={() => { showImportModal = false; importResult = null; }} class="btn btn-ghost btn-sm">
+                <button onclick={() => { showImportModal = false; importResult = null; importProgress = null; }} class="btn btn-ghost btn-sm" disabled={importing}>
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                     </svg>
@@ -998,11 +1053,20 @@
                     <div class="text-center py-8">
                         <div class="inline-block w-12 h-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin mb-4"></div>
                         <p class="text-sm font-medium">Importing participants...</p>
-                        {#if importFile}
+                        {#if importProgress}
+                            <div class="mt-4 space-y-2">
+                                <div class="w-full bg-muted rounded-full h-2">
+                                    <div class="bg-primary h-2 rounded-full transition-all duration-300" style="width: {importProgress.progress}%"></div>
+                                </div>
+                                <p class="text-xs text-muted-foreground">
+                                    {Math.round(importProgress.progress)}% complete ({importProgress.imported + importProgress.updated + importProgress.skipped} / {importProgress.total})
+                                </p>
+                            </div>
+                        {:else if importFile}
                             <p class="text-xs text-muted-foreground mt-1">Processing {importFile.name}</p>
                         {/if}
                         <p class="text-xs text-muted-foreground mt-3">
-                            This may take a moment for large files
+                            {importProgress ? 'Processing in background...' : 'This may take a moment for large files'}
                         </p>
                     </div>
                 {:else}
