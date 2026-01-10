@@ -360,18 +360,20 @@ class CTFdSyncService:
         except Exception as e:
             return False, None, str(e)
     
-    async def sync_results_for_event(self, event_id: UUID) -> List[Dict]:
+    async def sync_results_for_event(self, event_id: UUID) -> Dict[str, Any]:
         """
-        Sync final results from CTFd and update participant rankings.
+        Sync final results from CTFd and update participant/team rankings.
         
-        This fetches the scoreboard from CTFd and updates each participant's
-        rank and score in the ZeroPool database.
+        This fetches the scoreboard from CTFd and:
+        1. Creates/updates teams in ZeroPool based on CTFd team data
+        2. Updates team rankings and scores
+        3. Tries to match participants by ctfd_user_id or name
         
         CTFd /scoreboard/top/{count} returns format:
         {
             "data": {
-                "1": {"id": 1, "name": "Team A", "score": 500, "members": [...]},
-                "2": {"id": 2, "name": "Team B", "score": 400, "members": [...]}
+                "1": {"id": 1, "name": "Team A", "score": 500, ...},
+                "2": {"id": 2, "name": "Team B", "score": 400, ...}
             }
         }
         
@@ -379,16 +381,26 @@ class CTFdSyncService:
             event_id: The event ID to sync
             
         Returns:
-            List of updated participant info dicts
+            Dict with sync statistics
         """
-        from sqlalchemy import select
-        from app.models import Participant, Team, Event
+        from sqlalchemy import select, func
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+        from app.models import Participant, Team, TeamMember, Event
         
         if not self.db:
             raise ValueError("Database session required for sync")
         
+        stats = {
+            "teams_created": 0,
+            "teams_updated": 0,
+            "participants_updated": 0,
+            "participants_matched_by_name": 0,
+            "participants_matched_by_id": 0,
+            "unmatched_entries": [],
+        }
+        
         try:
-            # Get event settings to determine team mode
+            # Get event settings
             result = await self.db.execute(
                 select(Event).where(Event.id == event_id)
             )
@@ -396,12 +408,16 @@ class CTFdSyncService:
             if not event:
                 raise ValueError("Event not found")
             
-            is_team_mode = event.settings.get("team_mode", False) if event.settings else False
-            
-            # Get scoreboard from CTFd
+            # Get scoreboard from CTFd (this returns teams OR users based on CTFd config)
             standings = await self.client.get_standings(count=1000)
             
-            updated = []
+            if not standings:
+                return stats
+            
+            # Check if this is a team-based CTF by looking at the first entry
+            # CTFd team mode has "account_url" starting with "/teams/"
+            first_entry = standings[0] if standings else {}
+            is_team_ctf = first_entry.get("account_url", "").startswith("/teams/")
             
             for entry in standings:
                 rank = entry.get("_position", 0)
@@ -409,73 +425,146 @@ class CTFdSyncService:
                 account_id = entry.get("id")
                 account_name = entry.get("name", "")
                 
-                if is_team_mode:
-                    # Team mode - match by team name or id
-                    # CTFd returns team info directly in standings for team mode
+                if is_team_ctf:
+                    # Team-based CTF: Create/update team in ZeroPool
                     team_result = await self.db.execute(
                         select(Team).where(
                             Team.event_id == event_id,
-                            Team.name == account_name,
+                            Team.ctfd_team_id == account_id,
                         )
                     )
                     team = team_result.scalar_one_or_none()
                     
-                    if team:
-                        # Get all participants in this team
-                        members_result = await self.db.execute(
-                            select(Participant).where(
-                                Participant.event_id == event_id,
-                                Participant.team_id == team.id,
+                    if not team:
+                        # Try to find by name
+                        team_result = await self.db.execute(
+                            select(Team).where(
+                                Team.event_id == event_id,
+                                Team.name == account_name,
                             )
                         )
-                        team_members = members_result.scalars().all()
-                        
-                        for participant in team_members:
-                            participant.rank = rank
-                            participant.score = score
-                            updated.append({
-                                "id": str(participant.id),
-                                "name": participant.name,
-                                "team": team.name,
-                                "rank": rank,
-                                "score": score,
-                            })
+                        team = team_result.scalar_one_or_none()
+                    
+                    if not team:
+                        # Create new team
+                        team = Team(
+                            event_id=event_id,
+                            name=account_name,
+                            ctfd_team_id=account_id,
+                            final_rank=rank,
+                            final_score=score,
+                        )
+                        self.db.add(team)
+                        stats["teams_created"] += 1
+                    else:
+                        # Update existing team
+                        team.final_rank = rank
+                        team.final_score = score
+                        if not team.ctfd_team_id:
+                            team.ctfd_team_id = account_id
+                        stats["teams_updated"] += 1
+                    
+                    # Try to match participants in this team by fetching team members from CTFd
+                    try:
+                        members = await self.client.get_team_members(account_id)
+                        for member in members:
+                            member_name = member.get("name", "")
+                            member_id = member.get("id")
+                            
+                            # Try to match participant by ctfd_user_id first
+                            participant = None
+                            if member_id:
+                                p_result = await self.db.execute(
+                                    select(Participant).where(
+                                        Participant.event_id == event_id,
+                                        Participant.ctfd_user_id == member_id,
+                                    )
+                                )
+                                participant = p_result.scalar_one_or_none()
+                                if participant:
+                                    stats["participants_matched_by_id"] += 1
+                            
+                            # Try by name match (case-insensitive)
+                            if not participant and member_name:
+                                p_result = await self.db.execute(
+                                    select(Participant).where(
+                                        Participant.event_id == event_id,
+                                        func.lower(Participant.name) == member_name.lower(),
+                                    )
+                                )
+                                participant = p_result.scalar_one_or_none()
+                                if participant:
+                                    stats["participants_matched_by_name"] += 1
+                            
+                            if participant:
+                                # Update participant with team's rank and score
+                                participant.final_rank = rank
+                                participant.final_score = score
+                                if not participant.ctfd_user_id and member_id:
+                                    participant.ctfd_user_id = member_id
+                                stats["participants_updated"] += 1
+                                
+                                # Ensure participant is linked to team
+                                await self.db.flush()
+                                tm_result = await self.db.execute(
+                                    select(TeamMember).where(
+                                        TeamMember.team_id == team.id,
+                                        TeamMember.participant_id == participant.id,
+                                    )
+                                )
+                                if not tm_result.scalar_one_or_none():
+                                    self.db.add(TeamMember(
+                                        team_id=team.id,
+                                        participant_id=participant.id,
+                                    ))
+                    except Exception:
+                        # Failed to get team members, continue
+                        pass
+                
                 else:
-                    # User mode - try to match by ctfd_user_id or name
+                    # User-based CTF: Match by ctfd_user_id or name
                     participant = None
                     
                     # First try by ctfd_user_id
                     if account_id:
-                        result = await self.db.execute(
+                        p_result = await self.db.execute(
                             select(Participant).where(
                                 Participant.event_id == event_id,
                                 Participant.ctfd_user_id == account_id,
                             )
                         )
-                        participant = result.scalar_one_or_none()
+                        participant = p_result.scalar_one_or_none()
+                        if participant:
+                            stats["participants_matched_by_id"] += 1
                     
-                    # If not found, try by name match
+                    # Try by name match (case-insensitive)
                     if not participant and account_name:
-                        result = await self.db.execute(
+                        p_result = await self.db.execute(
                             select(Participant).where(
                                 Participant.event_id == event_id,
-                                Participant.name == account_name,
+                                func.lower(Participant.name) == account_name.lower(),
                             )
                         )
-                        participant = result.scalar_one_or_none()
+                        participant = p_result.scalar_one_or_none()
+                        if participant:
+                            stats["participants_matched_by_name"] += 1
                     
                     if participant:
-                        participant.rank = rank
-                        participant.score = score
-                        updated.append({
-                            "id": str(participant.id),
-                            "name": participant.name,
-                            "rank": rank,
-                            "score": score,
-                        })
+                        participant.final_rank = rank
+                        participant.final_score = score
+                        if not participant.ctfd_user_id and account_id:
+                            participant.ctfd_user_id = account_id
+                        stats["participants_updated"] += 1
+                    else:
+                        if len(stats["unmatched_entries"]) < 10:
+                            stats["unmatched_entries"].append({
+                                "rank": rank,
+                                "name": account_name,
+                                "score": score,
+                            })
             
             await self.db.flush()
-            return updated
+            return stats
             
         except Exception as e:
             raise RuntimeError(f"CTFd sync failed: {str(e)}")

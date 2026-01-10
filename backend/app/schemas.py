@@ -221,6 +221,8 @@ class EventUpdate(BaseModel):
     max_participants: Optional[int] = None
     min_team_size: Optional[int] = None
     max_team_size: Optional[int] = None
+    discord_url: Optional[str] = None
+    site_url: Optional[str] = None
 
 
 class EventResponse(BaseModel):

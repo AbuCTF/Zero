@@ -168,12 +168,12 @@ export const admin = {
 			}),
 
 		syncCTFd: (id: string) =>
-			request<{ success: boolean; message: string }>(`/admin/events/${id}/ctfd/sync`, {
+			request<{ success: boolean; message: string; stats?: { teams_created: number; teams_updated: number; participants_updated: number; participants_matched_by_id: number; participants_matched_by_name: number; unmatched_entries: unknown[] } }>(`/admin/events/${id}/ctfd/sync`, {
 				method: 'POST'
 			}),
 
 		provisionCtfd: (id: string) =>
-			request<{ success: boolean; message: string }>(`/admin/events/${id}/ctfd/provision`, {
+			request<{ success: boolean; message: string; stats?: { provisioned: number } }>(`/admin/events/${id}/ctfd/provision`, {
 				method: 'POST'
 			})
 	},

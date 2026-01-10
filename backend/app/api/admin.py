@@ -439,6 +439,10 @@ async def update_event(
         settings_update["min_team_size"] = data.min_team_size
     if data.max_team_size is not None:
         settings_update["max_team_size"] = data.max_team_size
+    if data.discord_url is not None:
+        settings_update["discord_url"] = data.discord_url
+    if data.site_url is not None:
+        settings_update["site_url"] = data.site_url
     
     if settings_update:
         event.settings = {**event.settings, **settings_update}
@@ -1228,6 +1232,128 @@ async def import_participants_csv(
         success=True,
         imported=imported,
         skipped=skipped,
+        errors=errors,
+    )
+
+
+class ResultsImportResponse(BaseResponse):
+    updated: int = 0
+    skipped: int = 0
+    not_found: int = 0
+    errors: list = []
+
+
+@router.post("/events/{event_id}/results/import", response_model=ResultsImportResponse)
+async def import_results_csv(
+    event_id: UUID,
+    file: UploadFile = File(...),
+    match_by: str = Query(default="email", regex="^(email|username|name)$"),
+    request: Request = None,
+    user: User = Depends(require_organizer),
+    db: AsyncSession = Depends(get_session),
+):
+    """
+    Import results (scores/ranks) from CSV file.
+    
+    Expected columns: 
+    - email/username/name (for matching)
+    - score (optional)
+    - rank (optional)
+    
+    This updates existing participants with their final scores/ranks.
+    """
+    from app.models import Event, Participant
+    
+    result = await db.execute(select(Event).where(Event.id == event_id))
+    event = result.scalar_one_or_none()
+    
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    
+    # Read CSV
+    content = await file.read()
+    text = content.decode("utf-8")
+    reader = csv.DictReader(io.StringIO(text))
+    
+    updated = 0
+    skipped = 0
+    not_found = 0
+    errors = []
+    
+    # Get all participants for this event
+    result = await db.execute(
+        select(Participant).where(Participant.event_id == event_id)
+    )
+    all_participants = result.scalars().all()
+    
+    # Create lookup maps
+    by_email = {p.email.lower(): p for p in all_participants if p.email}
+    by_username = {p.username.lower(): p for p in all_participants if p.username}
+    by_name = {p.name.lower(): p for p in all_participants if p.name}
+    
+    for i, row in enumerate(reader):
+        match_value = row.get(match_by, "").strip().lower()
+        
+        if not match_value:
+            errors.append({
+                "row": i + 2,
+                "error": f"Missing {match_by} column",
+            })
+            continue
+        
+        # Find participant
+        participant = None
+        if match_by == "email":
+            participant = by_email.get(match_value)
+        elif match_by == "username":
+            participant = by_username.get(match_value)
+        elif match_by == "name":
+            participant = by_name.get(match_value)
+        
+        if not participant:
+            not_found += 1
+            continue
+        
+        try:
+            # Update score and rank
+            score_str = row.get("score", "").strip()
+            rank_str = row.get("rank", "").strip()
+            
+            if score_str:
+                participant.final_score = int(score_str)
+            if rank_str:
+                participant.final_rank = int(rank_str)
+            
+            updated += 1
+            
+        except Exception as e:
+            errors.append({
+                "row": i + 2,
+                match_by: match_value,
+                "error": str(e),
+            })
+    
+    await db.flush()
+    
+    # Audit log
+    audit_log = AuditLog(
+        action="admin.import_results",
+        user_id=user.id,
+        actor_type="user",
+        resource_type="event",
+        resource_id=event_id,
+        ip_address=get_client_ip(request) if request else None,
+        metadata={"updated": updated, "not_found": not_found, "skipped": skipped},
+    )
+    db.add(audit_log)
+    
+    await db.flush()
+    
+    return ResultsImportResponse(
+        success=True,
+        updated=updated,
+        skipped=skipped,
+        not_found=not_found,
         errors=errors,
     )
 
@@ -2350,7 +2476,7 @@ async def list_prize_rules(
     result = await db.execute(
         select(PrizeRule)
         .where(PrizeRule.event_id == event_id)
-        .order_by(PrizeRule.rank_min)
+        .order_by(PrizeRule.rank_from)
     )
     rules = result.scalars().all()
     
@@ -2784,7 +2910,7 @@ async def finalize_event(
 # =============================================================================
 
 
-@router.post("/events/{event_id}/ctfd/sync", response_model=BaseResponse)
+@router.post("/events/{event_id}/ctfd/sync")
 async def sync_ctfd(
     event_id: UUID,
     request: Request,
@@ -2799,6 +2925,8 @@ async def sync_ctfd(
     1. ctfd_user_id (if they were provisioned to CTFd)
     2. name match (for imported participants)
     3. team name match (for team mode)
+    
+    Returns detailed sync statistics.
     """
     from app.services.ctfd import CTFdSyncService
     
@@ -2822,10 +2950,24 @@ async def sync_ctfd(
     sync_service = CTFdSyncService(event.ctfd_url, api_key, db=db)
     
     try:
-        results = await sync_service.sync_results_for_event(event_id)
+        stats = await sync_service.sync_results_for_event(event_id)
         
         # Update sync timestamp
         event.ctfd_synced_at = datetime.utcnow()
+        
+        # Build summary message
+        parts = []
+        if stats.get("teams_created"):
+            parts.append(f"{stats['teams_created']} teams created")
+        if stats.get("teams_updated"):
+            parts.append(f"{stats['teams_updated']} teams updated")
+        if stats.get("participants_updated"):
+            parts.append(f"{stats['participants_updated']} participants updated")
+        
+        if not parts:
+            message = "No matches found. Participants may need CTFd usernames matching their ZeroPool names."
+        else:
+            message = "Synced: " + ", ".join(parts)
         
         # Audit log
         audit_log = AuditLog(
@@ -2835,16 +2977,17 @@ async def sync_ctfd(
             resource_type="event",
             resource_id=event_id,
             ip_address=get_client_ip(request),
-            metadata={"rankings_updated": len(results)},
+            metadata=stats,
         )
         db.add(audit_log)
         
         await db.flush()
         
-        return BaseResponse(
-            success=True,
-            message=f"Synced {len(results)} participant rankings from CTFd",
-        )
+        return {
+            "success": True,
+            "message": message,
+            "stats": stats,
+        }
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
