@@ -699,97 +699,97 @@ async def bulk_import_participants_task(
                     existing = result.scalar_one_or_none()
                     
                     if existing:
-                    if update_existing:
-                        was_updated = False
-                        
-                        if p_data.get("name") and p_data["name"] != existing.name:
-                            existing.name = p_data["name"]
-                            was_updated = True
-                        
-                        if p_data.get("rank"):
-                            try:
-                                new_rank = int(p_data["rank"])
-                                if new_rank != existing.final_rank:
-                                    existing.final_rank = new_rank
-                                    was_updated = True
-                            except (ValueError, TypeError):
-                                pass
-                        
-                        if p_data.get("score"):
-                            try:
-                                new_score = float(p_data["score"])
-                                if new_score != existing.final_score:
-                                    existing.final_score = new_score
-                                    was_updated = True
-                            except (ValueError, TypeError):
-                                pass
-                        
-                        if was_updated:
-                            updated += 1
+                        if update_existing:
+                            was_updated = False
+                            
+                            if p_data.get("name") and p_data["name"] != existing.name:
+                                existing.name = p_data["name"]
+                                was_updated = True
+                            
+                            if p_data.get("rank"):
+                                try:
+                                    new_rank = int(p_data["rank"])
+                                    if new_rank != existing.final_rank:
+                                        existing.final_rank = new_rank
+                                        was_updated = True
+                                except (ValueError, TypeError):
+                                    pass
+                            
+                            if p_data.get("score"):
+                                try:
+                                    new_score = float(p_data["score"])
+                                    if new_score != existing.final_score:
+                                        existing.final_score = new_score
+                                        was_updated = True
+                                except (ValueError, TypeError):
+                                    pass
+                            
+                            if was_updated:
+                                updated += 1
+                            else:
+                                skipped += 1
                         else:
                             skipped += 1
-                    else:
-                        skipped += 1
-                    continue
-                
-                # Generate username
-                username = p_data.get("username") or email.split("@")[0].lower()
-                base_username = username
-                counter = 1
-                while True:
-                    result = await db.execute(
-                        select(Participant).where(
-                            Participant.event_id == event_uuid,
-                            Participant.username == username,
+                        continue
+                    
+                    # Generate username
+                    username = p_data.get("username") or email.split("@")[0].lower()
+                    base_username = username
+                    counter = 1
+                    while True:
+                        result = await db.execute(
+                            select(Participant).where(
+                                Participant.event_id == event_uuid,
+                                Participant.username == username,
+                            )
                         )
+                        if not result.scalar_one_or_none():
+                            break
+                        username = f"{base_username}{counter}"
+                        counter += 1
+                    
+                    password = secrets.token_urlsafe(12) if generate_passwords else "changeme123"
+                    
+                    final_rank = None
+                    final_score = None
+                    if p_data.get("rank"):
+                        try:
+                            final_rank = int(p_data["rank"])
+                        except (ValueError, TypeError):
+                            pass
+                    if p_data.get("score"):
+                        try:
+                            final_score = float(p_data["score"])
+                        except (ValueError, TypeError):
+                            pass
+                    
+                    extra_data = {}
+                    if p_data.get("team_name"):
+                        extra_data["team_name"] = p_data["team_name"]
+                    if p_data.get("_extra"):
+                        extra_data.update(p_data["_extra"])
+                    
+                    participant = Participant(
+                        event_id=event_uuid,
+                        email=email,
+                        username=username.lower(),
+                        password_hash=hash_password(password),
+                        name=p_data.get("name") or email.split("@")[0],
+                        final_rank=final_rank,
+                        final_score=final_score,
+                        extra_data=extra_data,
+                        email_verified=True,
+                        email_verified_at=datetime.utcnow(),
+                        source="import",
                     )
-                    if not result.scalar_one_or_none():
-                        break
-                    username = f"{base_username}{counter}"
-                    counter += 1
-                
-                password = secrets.token_urlsafe(12) if generate_passwords else "changeme123"
-                
-                final_rank = None
-                final_score = None
-                if p_data.get("rank"):
-                    try:
-                        final_rank = int(p_data["rank"])
-                    except (ValueError, TypeError):
-                        pass
-                if p_data.get("score"):
-                    try:
-                        final_score = float(p_data["score"])
-                    except (ValueError, TypeError):
-                        pass
-                
-                extra_data = {}
-                if p_data.get("team_name"):
-                    extra_data["team_name"] = p_data["team_name"]
-                if p_data.get("_extra"):
-                    extra_data.update(p_data["_extra"])
-                
-                participant = Participant(
-                    event_id=event_uuid,
-                    email=email,
-                    username=username.lower(),
-                    password_hash=hash_password(password),
-                    name=p_data.get("name") or email.split("@")[0],
-                    final_rank=final_rank,
-                    final_score=final_score,
-                    extra_data=extra_data,
-                    email_verified=True,
-                    email_verified_at=datetime.utcnow(),
-                    source="import",
-                )
-                
-                db.add(participant)
-                imported += 1
-                
-                # Commit in batches of 100 for better performance
-                if (imported + updated) % 100 == 0:
-                    await db.commit()
-                    await update_progress(imported, updated, skipped, errors_list, total)
+                    
+                    db.add(participant)
+                    imported += 1
+                    
+                    # Commit in batches of 100 for better performance
+                    if (imported + updated) % 100 == 0:
+                        await db.commit()
+                        await update_progress(imported, updated, skipped, errors_list, total)
                     
                 except Exception as e:
                     errors_list.append({"row": i + 1, "email": email, "error": str(e)})
