@@ -1,29 +1,25 @@
 services:
   db:
     image: postgres:15-alpine
-    restart: unless-stopped
+    restart: always
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-zeropool}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-zeropool}
-      POSTGRES_DB: ${POSTGRES_DB:-zeropool}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-zeropool}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
       interval: 10s
       timeout: 5s
       retries: 5
 
   redis:
     image: redis:7-alpine
-    restart: unless-stopped
+    restart: always
     command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
-    ports:
-      - "6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -34,43 +30,33 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    restart: unless-stopped
-    dns:
-      - 8.8.8.8
-      - 8.8.4.4
+    restart: always
     environment:
-      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-zeropool}:${POSTGRES_PASSWORD:-zeropool}@db:5432/${POSTGRES_DB:-zeropool}
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       - REDIS_URL=redis://redis:6379/0
     env_file:
       - .env
     volumes:
-      - ./backend:/app
       - storage_data:/app/storage
       - ./fonts:/app/fonts:ro
-    ports:
-      - "8001:8000"
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
 
   worker:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    restart: unless-stopped
-    dns:
-      - 8.8.8.8
-      - 8.8.4.4
+    restart: always
     environment:
-      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-zeropool}:${POSTGRES_PASSWORD:-zeropool}@db:5432/${POSTGRES_DB:-zeropool}
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       - REDIS_URL=redis://redis:6379/0
     env_file:
       - .env
     volumes:
-      - ./backend:/app
       - storage_data:/app/storage
       - ./fonts:/app/fonts:ro
     depends_on:
@@ -84,19 +70,31 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-      target: development
-    restart: unless-stopped
+      target: production
+    restart: always
     environment:
-      - PUBLIC_API_URL=http://localhost:8000
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
-    ports:
-      - "3000:3000"
+      - PUBLIC_API_URL=${API_URL}
+      - ORIGIN=${APP_URL}
     depends_on:
+      - api
+
+  caddy:
+    image: caddy:2-alpine
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
       - api
 
 volumes:
   postgres_data:
   redis_data:
   storage_data:
+  caddy_data:
+  caddy_config:

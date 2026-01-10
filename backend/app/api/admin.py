@@ -23,6 +23,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -3119,3 +3120,72 @@ async def update_user_role(
     await db.flush()
     
     return BaseResponse(success=True, message=f"User role updated to {role}")
+
+
+class CreateUserRequest(BaseModel):
+    email: str
+    username: str
+    password: str
+    name: Optional[str] = None
+    role: str = "organizer"
+
+
+@router.post("/users", response_model=BaseResponse)
+async def create_user(
+    data: CreateUserRequest,
+    current_user: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_session),
+):
+    """Create a new admin/organizer user."""
+    from app.models import UserRole
+    from app.utils.security import hash_password
+    
+    # Check if email exists
+    result = await db.execute(select(User).where(User.email == data.email.lower()))
+    if result.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Email already registered")
+    
+    # Check if username exists
+    result = await db.execute(select(User).where(User.username == data.username.lower()))
+    if result.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Username already taken")
+    
+    try:
+        role = UserRole(data.role)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid role. Use 'admin' or 'organizer'")
+    
+    user = User(
+        email=data.email.lower(),
+        username=data.username.lower(),
+        password_hash=hash_password(data.password),
+        name=data.name,
+        role=role,
+        is_active=True,
+    )
+    db.add(user)
+    await db.flush()
+    
+    return BaseResponse(success=True, message=f"User {data.username} created successfully")
+
+
+@router.delete("/users/{user_id}", response_model=BaseResponse)
+async def delete_user(
+    user_id: UUID,
+    current_user: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_session),
+):
+    """Delete an admin/organizer user."""
+    if user_id == current_user.id:
+        raise HTTPException(status_code=400, detail="Cannot delete yourself")
+    
+    result = await db.execute(select(User).where(User.id == user_id))
+    target_user = result.scalar_one_or_none()
+    
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    await db.delete(target_user)
+    await db.flush()
+    
+    return BaseResponse(success=True, message="User deleted")

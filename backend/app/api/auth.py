@@ -9,8 +9,10 @@ Handles:
 """
 
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -689,3 +691,141 @@ async def _send_verification_email(
     )
     db.add(email_log)
     await db.flush()
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+    event_slug: Optional[str] = None
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    password: str
+
+
+@router.post("/forgot-password", response_model=BaseResponse)
+async def forgot_password(
+    data: ForgotPasswordRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_session),
+    redis=Depends(get_redis),
+):
+    """
+    Request password reset for participant or admin.
+    Always returns success to prevent email enumeration.
+    """
+    import secrets
+    
+    email = data.email.lower().strip()
+    
+    # Check if it's an admin user
+    result = await db.execute(select(User).where(User.email == email))
+    user = result.scalar_one_or_none()
+    
+    if user:
+        # Generate reset token for admin
+        token = secrets.token_urlsafe(32)
+        await redis.setex(f"password_reset:admin:{token}", 3600, str(user.id))
+        
+        # TODO: Send password reset email to admin
+        # For now, log the token (in production, send email)
+        reset_url = f"{settings.app_url}/admin/reset-password?token={token}"
+        
+        # Log the request
+        audit_log = AuditLog(
+            action="auth.password_reset_request",
+            user_id=user.id,
+            actor_type="user",
+            resource_type="user",
+            resource_id=user.id,
+            ip_address=get_client_ip(request),
+            metadata={"email": email},
+        )
+        db.add(audit_log)
+        await db.flush()
+        
+        return BaseResponse(success=True, message="If an account exists, a reset link has been sent")
+    
+    # Check if it's a participant
+    if data.event_slug:
+        result = await db.execute(select(Event).where(Event.slug == data.event_slug))
+        event = result.scalar_one_or_none()
+        
+        if event:
+            result = await db.execute(
+                select(Participant).where(
+                    Participant.event_id == event.id,
+                    Participant.email == email,
+                )
+            )
+            participant = result.scalar_one_or_none()
+            
+            if participant:
+                token = secrets.token_urlsafe(32)
+                await redis.setex(
+                    f"password_reset:participant:{token}", 
+                    3600, 
+                    f"{participant.id}:{event.id}"
+                )
+                
+                reset_url = f"{settings.app_url}/events/{event.slug}/reset-password?token={token}"
+                
+                # TODO: Send password reset email to participant
+    
+    return BaseResponse(success=True, message="If an account exists, a reset link has been sent")
+
+
+@router.post("/reset-password", response_model=BaseResponse)
+async def reset_password(
+    data: ResetPasswordRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_session),
+    redis=Depends(get_redis),
+):
+    """Reset password using token."""
+    token = data.token.strip()
+    
+    # Check admin reset
+    admin_data = await redis.get(f"password_reset:admin:{token}")
+    if admin_data:
+        user_id = admin_data.decode() if isinstance(admin_data, bytes) else admin_data
+        result = await db.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+        
+        if user:
+            user.password_hash = hash_password(data.password)
+            await redis.delete(f"password_reset:admin:{token}")
+            await db.flush()
+            
+            audit_log = AuditLog(
+                action="auth.password_reset",
+                user_id=user.id,
+                actor_type="user",
+                resource_type="user",
+                resource_id=user.id,
+                ip_address=get_client_ip(request),
+            )
+            db.add(audit_log)
+            await db.flush()
+            
+            return BaseResponse(success=True, message="Password reset successfully")
+    
+    # Check participant reset
+    participant_data = await redis.get(f"password_reset:participant:{token}")
+    if participant_data:
+        data_str = participant_data.decode() if isinstance(participant_data, bytes) else participant_data
+        participant_id, event_id = data_str.split(":")
+        
+        result = await db.execute(
+            select(Participant).where(Participant.id == participant_id)
+        )
+        participant = result.scalar_one_or_none()
+        
+        if participant:
+            participant.password_hash = hash_password(data.password)
+            await redis.delete(f"password_reset:participant:{token}")
+            await db.flush()
+            
+            return BaseResponse(success=True, message="Password reset successfully")
+    
+    raise HTTPException(status_code=400, detail="Invalid or expired reset token")
