@@ -71,9 +71,10 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       target: production
+      args:
+        - PUBLIC_API_URL=${API_URL}
     restart: always
     environment:
-      - PUBLIC_API_URL=${API_URL}
       - ORIGIN=${APP_URL}
     depends_on:
       - api

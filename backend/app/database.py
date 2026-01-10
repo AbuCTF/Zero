@@ -85,8 +85,17 @@ async def init_db() -> None:
     Creates all tables if they don't exist.
     For production, use Alembic migrations instead.
     """
+    from sqlalchemy.exc import IntegrityError, ProgrammingError
+    
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+        try:
+            await conn.run_sync(Base.metadata.create_all)
+        except (IntegrityError, ProgrammingError) as e:
+            # Ignore duplicate enum/type errors (race condition with multiple workers)
+            if "already exists" in str(e):
+                pass
+            else:
+                raise
 
 
 async def close_db() -> None:

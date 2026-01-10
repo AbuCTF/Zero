@@ -23,6 +23,10 @@ FROM node:22-alpine AS build
 
 WORKDIR /app
 
+# Build args for environment variables baked at build time
+ARG PUBLIC_API_URL
+ENV PUBLIC_API_URL=${PUBLIC_API_URL}
+
 # Install dependencies
 COPY package*.json ./
 RUN npm install --frozen-lockfile 2>/dev/null || npm install
