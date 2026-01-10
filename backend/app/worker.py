@@ -730,6 +730,12 @@ async def bulk_import_participants_task(
                                 skipped += 1
                         else:
                             skipped += 1
+                        
+                        # Update progress for skipped/updated records too
+                        processed = imported + updated + skipped
+                        if processed % 100 == 0:
+                            await db.commit()
+                            await update_progress(imported, updated, skipped, errors_list, total)
                         continue
                     
                     # Generate username
@@ -786,8 +792,9 @@ async def bulk_import_participants_task(
                     db.add(participant)
                     imported += 1
                     
-                    # Commit in batches of 100 for better performance
-                    if (imported + updated) % 100 == 0:
+                    # Update progress every 100 processed records (regardless of import/skip/update)
+                    processed = imported + updated + skipped
+                    if processed % 100 == 0:
                         await db.commit()
                         await update_progress(imported, updated, skipped, errors_list, total)
                     
