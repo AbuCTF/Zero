@@ -83,7 +83,7 @@ async def delete_admin(email: str):
         
         # Count remaining admins
         count_result = await db.execute(
-            select(User).where(User.role == UserRole.admin, User.is_active == True)
+            select(User).where(User.role == UserRole.ADMIN, User.is_active == True)
         )
         admin_count = len(count_result.scalars().all())
         
