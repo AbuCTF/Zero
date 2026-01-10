@@ -982,7 +982,7 @@ async def update_certificate_display_name(
             action="certificate.name_edit",
             resource_type="certificate",
             resource_id=str(certificate.id),
-            details={
+            extra_data={
                 "old_display_name": old_display_name,
                 "new_display_name": new_display_name,
                 "edit_count": certificate.edit_count,
