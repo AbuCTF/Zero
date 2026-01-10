@@ -54,8 +54,10 @@
         <!-- Sidebar -->
         <aside class="w-64 bg-card border-r border-border flex flex-col">
             <div class="p-6 border-b border-border">
-                <a href="/" class="text-xl font-semibold">ZeroPool</a>
-                <div class="text-xs text-muted-foreground mt-1">Participant Portal</div>
+                <a href="/" class="block">
+                    <img src="/logo.png" alt="ZeroPool" class="h-8 w-auto" />
+                </a>
+                <div class="text-xs text-muted-foreground mt-2">Participant Portal</div>
             </div>
 
             <nav class="flex-1 p-4">

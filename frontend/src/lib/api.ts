@@ -390,10 +390,15 @@ export const participant = {
 			method: 'POST'
 		}),
 
-	requestAccess: (email: string) =>
-		request<{ success: boolean; message: string }>('/participants/request-access', {
+	requestAccess: (email: string, eventId?: string) =>
+		request<{ 
+			success: boolean; 
+			message: string;
+			requires_event_selection?: boolean;
+			events?: Array<{ id: string; name: string; slug: string }>;
+		}>('/participants/request-access', {
 			method: 'POST',
-			body: JSON.stringify({ email })
+			body: JSON.stringify({ email, event_id: eventId })
 		}),
 
 	events: () =>

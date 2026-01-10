@@ -6,21 +6,42 @@
     let loading = $state(false);
     let error = $state('');
     let sent = $state(false);
+    
+    // Event picker state
+    let showEventPicker = $state(false);
+    let availableEvents = $state<Array<{ id: string; name: string; slug: string }>>([]);
 
-    async function handleSubmit() {
+    async function handleSubmit(selectedEventId?: string) {
         if (!email) return;
         
         loading = true;
         error = '';
         
         try {
-            await api.participant.requestAccess(email);
-            sent = true;
+            const result = await api.participant.requestAccess(email, selectedEventId);
+            
+            if (result.requires_event_selection && result.events) {
+                // User is registered for multiple events - show picker
+                availableEvents = result.events;
+                showEventPicker = true;
+            } else {
+                // Single event or event selected - email sent
+                sent = true;
+            }
         } catch (e: any) {
             error = e.message || 'Failed to send access link';
         } finally {
             loading = false;
         }
+    }
+    
+    function selectEvent(eventId: string) {
+        handleSubmit(eventId);
+    }
+    
+    function goBack() {
+        showEventPicker = false;
+        availableEvents = [];
     }
 </script>
 
@@ -57,6 +78,36 @@
                             We've sent a magic link to <strong>{email}</strong>.
                             Click the link in the email to access your portal.
                         </p>
+                    </div>
+                {:else if showEventPicker}
+                    <!-- Event Picker for multi-event users -->
+                    <div class="space-y-4">
+                        <div class="text-center">
+                            <h2 class="text-lg font-semibold mb-2">Select Event</h2>
+                            <p class="text-muted-foreground text-sm">
+                                You're registered for multiple events. Which one would you like to access?
+                            </p>
+                        </div>
+                        
+                        <div class="space-y-2">
+                            {#each availableEvents as event}
+                                <button
+                                    onclick={() => selectEvent(event.id)}
+                                    disabled={loading}
+                                    class="w-full p-4 text-left rounded-lg border border-border hover:border-primary hover:bg-primary/5 transition-colors disabled:opacity-50"
+                                >
+                                    <div class="font-medium">{event.name}</div>
+                                    <div class="text-xs text-muted-foreground mt-0.5">{event.slug}</div>
+                                </button>
+                            {/each}
+                        </div>
+                        
+                        <button 
+                            onclick={goBack}
+                            class="btn btn-ghost w-full"
+                        >
+                            ← Back
+                        </button>
                     </div>
                 {:else}
                     {#if error}

@@ -74,15 +74,8 @@
 		<aside class="hidden lg:flex lg:flex-col w-56 border-r border-border bg-background">
 			<!-- Logo -->
 			<div class="p-4 border-b border-border">
-				<a href="/admin" class="flex items-center gap-2 text-foreground">
-					<div class="w-8 h-8 rounded-xl bg-foreground flex items-center justify-center">
-						<svg class="w-4 h-4 text-background" viewBox="0 0 24 24" fill="none">
-							<path d="M12 2L2 7l10 5 10-5-10-5z" fill="currentColor" opacity="0.3"/>
-							<path d="M2 17l10 5 10-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-							<path d="M2 12l10 5 10-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-						</svg>
-					</div>
-					<span class="text-sm font-semibold tracking-tight">ZeroPool</span>
+				<a href="/admin" class="flex items-center">
+					<img src="/logo.png" alt="ZeroPool" class="h-8 w-auto" />
 				</a>
 			</div>
 
@@ -156,7 +149,7 @@
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
 					</svg>
 				</button>
-				<span class="font-semibold text-foreground">ZeroPool</span>
+				<img src="/logo.png" alt="ZeroPool" class="h-7 w-auto" />
 				<button onclick={logout} class="p-2 -mr-2 text-foreground-muted hover:text-foreground">
 					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
@@ -171,7 +164,7 @@
 				<div class="absolute inset-0 bg-black/50" onclick={() => sidebarOpen = false}></div>
 				<aside class="absolute left-0 top-0 bottom-0 w-64 bg-background-secondary border-r border-border">
 					<div class="p-4 border-b border-border">
-						<span class="text-xl font-semibold text-foreground">ZeroPool</span>
+						<img src="/logo.png" alt="ZeroPool" class="h-8 w-auto" />
 					</div>
 					<nav class="p-4 space-y-1">
 						{#each navItems as item}
