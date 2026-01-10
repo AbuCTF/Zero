@@ -1395,7 +1395,7 @@ async def delete_participant(
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
 ):
-    """Delete a participant."""
+    """Delete a participant and their related sessions."""
     result = await db.execute(
         select(Participant).where(
             Participant.id == participant_id,
@@ -1406,6 +1406,12 @@ async def delete_participant(
     
     if not participant:
         raise HTTPException(status_code=404, detail="Participant not found")
+    
+    # Delete related sessions first (foreign key constraint)
+    from app.models import Session
+    await db.execute(
+        Session.__table__.delete().where(Session.participant_id == participant_id)
+    )
     
     await db.delete(participant)
     await db.flush()
