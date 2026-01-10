@@ -647,31 +647,34 @@ async def bulk_import_participants_task(
     Background task to import large numbers of participants.
     Stores progress in Redis for frontend polling.
     """
+    import json
     import secrets
     from app.utils.security import hash_password
     
     redis = ctx.get("redis")
     progress_key = f"import_progress:{job_id or event_id}"
     
-    async def update_progress(imported: int, updated: int, skipped: int, errors: int, total: int, status: str = "processing"):
+    async def update_progress(imported: int, updated: int, skipped: int, errors_list: list, total: int, status: str = "processing"):
         if redis:
+            processed = imported + updated + skipped + len(errors_list)
+            progress_pct = min(100, int((processed / total) * 100)) if total > 0 else 0
             await redis.hset(progress_key, mapping={
                 "imported": imported,
                 "updated": updated,
                 "skipped": skipped,
-                "errors": errors,
+                "errors": json.dumps(errors_list[:50]),  # Limit to 50 errors to avoid huge payloads
                 "total": total,
                 "status": status,
+                "progress": progress_pct,
             })
             await redis.expire(progress_key, 3600)  # Expire in 1 hour
     
     total = len(participants_data)
-    await update_progress(0, 0, 0, 0, total, "starting")
+    await update_progress(0, 0, 0, [], total, "starting")
     
     imported = 0
     updated = 0
     skipped = 0
-    error_count = 0
     errors_list = []
     
     async with async_session() as db:
@@ -681,7 +684,6 @@ async def bulk_import_participants_task(
             email = (p_data.get("email") or "").strip().lower()
             
             if not email or "@" not in email:
-                error_count += 1
                 errors_list.append({"row": i + 1, "error": "Invalid email"})
                 continue
             
@@ -786,25 +788,24 @@ async def bulk_import_participants_task(
                 # Commit in batches of 100 for better performance
                 if (imported + updated) % 100 == 0:
                     await db.commit()
-                    await update_progress(imported, updated, skipped, error_count, total)
+                    await update_progress(imported, updated, skipped, errors_list, total)
                     
             except Exception as e:
-                error_count += 1
                 errors_list.append({"row": i + 1, "email": email, "error": str(e)})
         
         # Final commit
         await db.commit()
     
-    await update_progress(imported, updated, skipped, error_count, total, "completed")
+    await update_progress(imported, updated, skipped, errors_list, total, "completed")
     
-    logger.info(f"Import completed: {imported} imported, {updated} updated, {skipped} skipped, {error_count} errors")
+    logger.info(f"Import completed: {imported} imported, {updated} updated, {skipped} skipped, {len(errors_list)} errors")
     
     return {
         "imported": imported,
         "updated": updated,
         "skipped": skipped,
         "errors": errors_list[:50],  # Limit errors returned
-        "total_errors": error_count,
+        "total_errors": len(errors_list),
     }
 
 

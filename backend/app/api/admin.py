@@ -990,6 +990,19 @@ async def import_participants(
     # For large imports (>100), use background processing
     if len(participants_data) > 100:
         job_id = secrets.token_urlsafe(16)
+        progress_key = f"import_progress:{job_id}"
+        
+        # Initialize progress in Redis BEFORE queueing (so frontend can poll immediately)
+        await redis.hset(progress_key, mapping={
+            "imported": 0,
+            "updated": 0,
+            "skipped": 0,
+            "errors": "[]",
+            "total": len(participants_data),
+            "status": "queued",
+            "progress": 0,
+        })
+        await redis.expire(progress_key, 3600)  # 1 hour expiry
         
         # Queue background job
         parsed = urlparse(settings.redis_url)
@@ -1213,27 +1226,40 @@ async def get_import_progress(
     redis=Depends(get_redis),
 ):
     """Get background import progress."""
+    import json
+    
     progress_key = f"import_progress:{job_id}"
     progress = await redis.hgetall(progress_key)
     
     if not progress:
         raise HTTPException(status_code=404, detail="Import job not found or expired")
     
-    # Decode bytes to strings
+    # Decode bytes to proper types
     decoded = {}
     for k, v in progress.items():
         key = k.decode() if isinstance(k, bytes) else k
         val = v.decode() if isinstance(v, bytes) else v
-        # Convert numeric strings to ints
-        if key in ["imported", "updated", "skipped", "errors", "total"]:
-            decoded[key] = int(val)
+        
+        if key in ["imported", "updated", "skipped", "total", "progress"]:
+            try:
+                decoded[key] = int(val)
+            except (ValueError, TypeError):
+                decoded[key] = 0
+        elif key == "errors":
+            # Parse JSON list
+            try:
+                decoded[key] = json.loads(val) if val else []
+            except json.JSONDecodeError:
+                decoded[key] = []
         else:
             decoded[key] = val
     
-    return {
-        "success": True,
-        "progress": decoded,
-    }
+    # Calculate progress percentage if not present
+    if "progress" not in decoded and decoded.get("total", 0) > 0:
+        processed = decoded.get("imported", 0) + decoded.get("updated", 0) + decoded.get("skipped", 0) + len(decoded.get("errors", []))
+        decoded["progress"] = min(100, int((processed / decoded["total"]) * 100))
+    
+    return decoded
 
 
 @router.post("/events/{event_id}/participants/import-csv", response_model=ParticipantImportResponse)
