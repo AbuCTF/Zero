@@ -1,0 +1,168 @@
+@startuml ZeroPool Architecture
+!theme mars
+skinparam backgroundColor #1a1a2e
+skinparam defaultFontColor #eaeaea
+skinparam ArrowColor #4fc3f7
+skinparam ComponentBackgroundColor #16213e
+skinparam ComponentBorderColor #4fc3f7
+skinparam DatabaseBackgroundColor #0f3460
+skinparam DatabaseBorderColor #e94560
+skinparam NodeBackgroundColor #1a1a2e
+skinparam NodeBorderColor #4fc3f7
+skinparam PackageBackgroundColor #16213e
+skinparam PackageBorderColor #4fc3f7
+skinparam NoteBackgroundColor #533483
+skinparam NoteBorderColor #e94560
+
+title **ZeroPool**\n<size:12>Production Architecture</size>
+
+' External actors
+actor "Participant" as user #4fc3f7
+actor "Admin/Organizer" as admin #e94560
+cloud "CTFd Platform" as ctfd #ff9800
+
+' Cloudflare Edge
+package "Cloudflare Edge" as cf #0f3460 {
+    component "DNS\n(app.h7tex.com)" as dns
+    component "Turnstile\nCAPTCHA" as turnstile
+    component "DDoS\nProtection" as ddos
+    component "SSL/TLS\nTermination" as cfssl
+}
+
+' GCP VM
+node "GCP e2-small (2 vCPU, 2GB RAM)" as gcp {
+    
+    package "Docker Compose Stack" as docker {
+        
+        ' Caddy Reverse Proxy
+        component "**Caddy**\n:80/:443\nAuto SSL\nReverse Proxy" as caddy #e94560
+        
+        ' Frontend
+        package "Frontend Container" as fe_pkg #16213e {
+            component "**SvelteKit 5**\nSSR + Hydration\n:3000" as web
+            component "TailwindCSS" as tw
+            component "Runes\nState Mgmt" as runes
+        }
+        
+        ' Backend
+        package "Backend Container" as be_pkg #16213e {
+            component "**FastAPI**\nAsync REST API\n:8000" as api
+            component "Pydantic v2\nValidation" as pydantic
+            component "SQLAlchemy 2.0\nAsync ORM" as orm
+        }
+        
+        ' Worker
+        package "Worker Container" as wk_pkg #16213e {
+            component "**ARQ Worker**\nBackground Tasks" as worker
+            component "Email Queue" as emailq
+            component "Cert Generation" as certgen
+        }
+        
+        ' Data Layer
+        database "**PostgreSQL 15**\nPrimary Database\nEvents, Participants\nCertificates, Prizes" as db #0f3460
+        
+        database "**Redis 7**\nSession Store\nTask Queue\nRate Limiting" as redis #0f3460
+        
+        ' Storage
+        storage "**Docker Volume**\n/app/storage\nCertificates\nUploads" as storage #533483
+    }
+}
+
+' External Services
+package "Email Providers" as email_providers #533483 {
+    component "Brevo API" as brevo
+    component "SMTP Fallback" as smtp
+}
+
+' Connections - User Flow
+user --> dns : HTTPS
+dns --> cfssl
+cfssl --> ddos
+ddos --> caddy : HTTPS (Full Strict)
+
+' Turnstile
+user ..> turnstile : Verify
+turnstile ..> api : Token validation
+
+' Admin Flow  
+admin --> dns : HTTPS
+admin ..> ctfd : Manage CTF
+
+' Caddy Routing
+caddy --> web : /
+caddy --> api : /api/*
+caddy --> api : /uploads/*
+
+' Frontend to Backend
+web --> api : REST API calls
+
+' Backend internals
+api --> orm
+orm --> db
+api --> redis : Sessions\nCache
+api --> worker : Queue tasks
+
+' Worker
+worker --> redis : Consume jobs
+worker --> emailq
+emailq --> brevo
+emailq --> smtp
+worker --> certgen
+certgen --> storage
+
+' CTFd Integration
+api <..> ctfd : Sync users\nFetch results
+
+' Storage
+api --> storage : Read/Write
+worker --> storage : Generate certs
+
+' Notes
+note right of caddy
+  **Automatic SSL**
+  Let's Encrypt certs
+  Auto-renewal
+end note
+
+note bottom of db
+  **Tables:**
+  - events
+  - participants
+  - teams
+  - certificates
+  - prize_rules
+  - voucher_pools
+  - email_logs
+  - audit_logs
+end note
+
+note right of redis
+  **Keys:**
+  - session:{id}
+  - rate_limit:{ip}
+  - arq:queue
+  - password_reset:{token}
+end note
+
+note bottom of api
+  **Endpoints:**
+  - /api/auth/*
+  - /api/events/*
+  - /api/admin/*
+  - /api/participants/*
+  - /api/certificates/*
+end note
+
+' Legend
+legend right
+  |= Component |= Technology |
+  | Frontend | SvelteKit 5, Tailwind |
+  | Backend | FastAPI, SQLAlchemy |
+  | Database | PostgreSQL 15 |
+  | Cache | Redis 7 |
+  | Proxy | Caddy 2 |
+  | Worker | ARQ (async) |
+  | Email | Brevo, SMTP |
+endlegend
+
+@enduml
