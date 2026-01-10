@@ -754,7 +754,9 @@ class EmailOrchestrator:
             
             # Try to send
             try:
+                print(f"[EMAIL] Attempting to send via {provider_name} ({provider_type})")
                 success, message_id, error = await provider.send(message, config)
+                print(f"[EMAIL] Result: success={success}, error={error}")
                 
                 if success:
                     # Record success

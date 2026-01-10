@@ -231,13 +231,27 @@ class CertificateGenerator:
                 
                 # Load font
                 font_path = self._get_font_path(zone.font_family)
+                font = None
+                
                 if font_path:
                     font = ImageFont.truetype(font_path, zone.font_size)
                 else:
-                    # Fallback to default
-                    try:
-                        font = ImageFont.truetype("arial.ttf", zone.font_size)
-                    except:
+                    # Try common fallback fonts (Vera.ttf from reportlab is reliable)
+                    fallback_fonts = [
+                        "/usr/local/lib/python3.11/site-packages/reportlab/fonts/Vera.ttf",
+                        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                        "arial.ttf",
+                        "/usr/share/fonts/TTF/DejaVuSans.ttf",
+                    ]
+                    for fallback in fallback_fonts:
+                        try:
+                            font = ImageFont.truetype(fallback, zone.font_size)
+                            break
+                        except:
+                            continue
+                    
+                    if font is None:
+                        # Last resort - default font doesn't support sizing
                         font = ImageFont.load_default()
                 
                 # Get text color

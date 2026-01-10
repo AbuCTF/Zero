@@ -14,7 +14,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import (
     create_session,
+    delete_session,
     get_client_ip,
+    get_current_session,
     get_redis,
     get_user_agent,
     require_participant,
@@ -22,7 +24,7 @@ from app.api.deps import (
 )
 from app.config import get_settings
 from app.database import get_session
-from app.models import AuditLog, Certificate, EmailLog, EmailStatus, Event, Participant, Prize, Team, TeamMember
+from app.models import AuditLog, Certificate, EmailLog, EmailStatus, Event, Participant, Prize, Session, Team, TeamMember
 from app.schemas import BaseResponse, CertificateCustomizeRequest, ParticipantResponse, ParticipantUpdate
 from app.services.email import EmailMessage, EmailOrchestrator, render_email, render_subject
 
@@ -122,7 +124,7 @@ async def verify_magic_link(
     result = await db.execute(
         select(Participant).where(
             Participant.magic_link_token == token,
-            Participant.magic_link_expires_at > datetime.utcnow(),
+            Participant.magic_link_expires_at > datetime.now(timezone.utc),
             Participant.is_blocked == False,
         )
     )
@@ -170,6 +172,23 @@ async def verify_magic_link(
         success=True,
         message="Login successful",
     )
+
+
+@router.post("/logout", response_model=BaseResponse)
+async def logout(
+    response: Response,
+    db: AsyncSession = Depends(get_session),
+    session=Depends(get_current_session),
+):
+    """
+    Logout participant and clear session.
+    """
+    if session:
+        await delete_session(db, session.id)
+    
+    response.delete_cookie(settings.session_cookie_name)
+    
+    return BaseResponse(success=True, message="Logged out successfully")
 
 
 async def _send_magic_link_email(
@@ -761,7 +780,7 @@ async def download_certificate(
                     height=zone_config.get("height", 50),
                     font_family=zone_config.get("font_family", "Helvetica"),
                     font_size=zone_config.get("font_size", 24),
-                    font_color=zone_config.get("font_color", "#000000"),
+                    font_color=zone_config.get("font_color") or zone_config.get("color", "#000000"),
                     alignment=zone_config.get("alignment", "center"),
                     is_percentage=zone_config.get("is_percentage", True),
                 ))

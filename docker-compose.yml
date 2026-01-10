@@ -44,6 +44,9 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     restart: unless-stopped
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     environment:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-zeropool}:${POSTGRES_PASSWORD:-zeropool}@db:5432/${POSTGRES_DB:-zeropool}
       - REDIS_URL=redis://redis:6379/0
@@ -70,6 +73,9 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     restart: unless-stopped
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     environment:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-zeropool}:${POSTGRES_PASSWORD:-zeropool}@db:5432/${POSTGRES_DB:-zeropool}
       - REDIS_URL=redis://redis:6379/0

@@ -8,7 +8,7 @@ Handles:
 - Password reset
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import select
@@ -113,7 +113,7 @@ async def login(
         )
         
         # Update last login
-        user.last_login_at = datetime.utcnow()
+        user.last_login_at = datetime.now(timezone.utc)
         await db.flush()
         
         # Log success
@@ -155,7 +155,7 @@ async def login(
     
     if participant:
         # Check lockout
-        if participant.locked_until and participant.locked_until > datetime.utcnow():
+        if participant.locked_until and participant.locked_until > datetime.now(timezone.utc):
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail="Account temporarily locked. Try again later.",
@@ -167,7 +167,7 @@ async def login(
             participant.login_attempts += 1
             
             if participant.login_attempts >= settings.max_login_attempts:
-                participant.locked_until = datetime.utcnow() + timedelta(
+                participant.locked_until = datetime.now(timezone.utc) + timedelta(
                     minutes=settings.lockout_duration_minutes
                 )
             
@@ -334,7 +334,7 @@ async def register(
             detail="Registration is not open for this event",
         )
     
-    if event.registration_end and datetime.utcnow() > event.registration_end:
+    if event.registration_end and datetime.now(timezone.utc) > event.registration_end:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Registration has ended",
@@ -375,7 +375,7 @@ async def register(
         password_hash=hash_password(data.password),
         name=data.name,
         email_verification_token=verification_token,
-        email_verification_sent_at=datetime.utcnow(),
+        email_verification_sent_at=datetime.now(timezone.utc),
         registration_ip=get_client_ip(request),
         source="registration",
     )
@@ -443,7 +443,7 @@ async def verify_email(
     
     # Check token age (24 hours)
     if participant.email_verification_sent_at:
-        token_age = datetime.utcnow() - participant.email_verification_sent_at
+        token_age = datetime.now(timezone.utc) - participant.email_verification_sent_at
         if token_age > timedelta(hours=24):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -452,10 +452,16 @@ async def verify_email(
     
     # Mark as verified
     participant.email_verified = True
-    participant.email_verified_at = datetime.utcnow()
+    participant.email_verified_at = datetime.now(timezone.utc)
     participant.email_verification_token = None
     
     await db.flush()
+    
+    # Fetch event info for the response
+    event_result = await db.execute(
+        select(Event).where(Event.id == participant.event_id)
+    )
+    event = event_result.scalar_one_or_none()
     
     # Log verification
     await _log_audit(
@@ -486,6 +492,18 @@ async def verify_email(
         max_age=settings.session_lifetime_hours * 3600,
     )
     
+    # Build event info for response
+    event_info = None
+    if event:
+        event_settings = event.settings or {}
+        event_info = {
+            "id": str(event.id),
+            "name": event.name,
+            "slug": event.slug,
+            "discord_url": event_settings.get("discord_url"),
+            "event_url": event_settings.get("event_url") or event.ctfd_url,
+        }
+    
     return AuthResponse(
         success=True,
         message="Email verified successfully",
@@ -496,6 +514,7 @@ async def verify_email(
             "name": participant.name,
             "email_verified": True,
         },
+        event=event_info,
     )
 
 
@@ -538,7 +557,7 @@ async def resend_verification(
     
     # Rate limit: max 1 email per 5 minutes
     if participant.email_verification_sent_at:
-        time_since_last = datetime.utcnow() - participant.email_verification_sent_at
+        time_since_last = datetime.now(timezone.utc) - participant.email_verification_sent_at
         if time_since_last < timedelta(minutes=5):
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
@@ -548,10 +567,7 @@ async def resend_verification(
     # Generate new token
     verification_token = generate_verification_token()
     participant.email_verification_token = verification_token
-    participant.email_verification_sent_at = datetime.utcnow()
-    
-    await db.flush()
-    
+    participant.email_verification_sent_at = datetime.now(timezone.utc)
     # Send email
     verification_url = f"{settings.app_url}/verify?token={verification_token}"
     await _send_verification_email(db, redis, participant, event, verification_url)
@@ -669,7 +685,7 @@ async def _send_verification_email(
         status=EmailStatus.SENT if result.success else EmailStatus.FAILED,
         error_message=result.error,
         attempts=result.attempts,
-        sent_at=datetime.utcnow() if result.success else None,
+        sent_at=datetime.now(timezone.utc) if result.success else None,
     )
     db.add(email_log)
     await db.flush()

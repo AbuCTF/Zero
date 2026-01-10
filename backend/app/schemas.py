@@ -93,6 +93,7 @@ class AuthResponse(BaseResponse):
     """Authentication response."""
     user: Optional[Dict[str, Any]] = None
     participant: Optional[Dict[str, Any]] = None
+    event: Optional[Dict[str, Any]] = None  # Event info for post-verification
 
 
 # =============================================================================
