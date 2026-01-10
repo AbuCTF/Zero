@@ -645,7 +645,7 @@ async def bulk_import_participants_task(
 ):
     """
     Background task to import large numbers of participants.
-    Stores progress in Redis for frontend polling.
+    Optimized for bulk operations - fetches all existing data upfront.
     """
     import json
     import secrets
@@ -662,12 +662,12 @@ async def bulk_import_participants_task(
                 "imported": imported,
                 "updated": updated,
                 "skipped": skipped,
-                "errors": json.dumps(errors_list[:50]),  # Limit to 50 errors to avoid huge payloads
+                "errors": json.dumps(errors_list[:50]),
                 "total": total,
                 "status": status,
                 "progress": progress_pct,
             })
-            await redis.expire(progress_key, 3600)  # Expire in 1 hour
+            await redis.expire(progress_key, 3600)
     
     total = len(participants_data)
     await update_progress(0, 0, 0, [], total, "starting")
@@ -681,6 +681,24 @@ async def bulk_import_participants_task(
         async with async_session() as db:
             event_uuid = UUID(event_id)
             
+            # OPTIMIZATION: Fetch ALL existing participants for this event upfront
+            logger.info(f"Fetching existing participants for event {event_id}...")
+            result = await db.execute(
+                select(Participant).where(Participant.event_id == event_uuid)
+            )
+            existing_participants = result.scalars().all()
+            
+            # Build lookup dictionaries - O(1) lookup instead of O(n) database queries
+            existing_by_email = {p.email.lower(): p for p in existing_participants}
+            existing_usernames = {p.username.lower() for p in existing_participants}
+            
+            logger.info(f"Found {len(existing_by_email)} existing participants, processing {total} new records...")
+            
+            await update_progress(0, 0, 0, [], total, "processing")
+            
+            # Batch for new participants
+            new_participants = []
+            
             for i, p_data in enumerate(participants_data):
                 email = (p_data.get("email") or "").strip().lower()
                 
@@ -689,14 +707,8 @@ async def bulk_import_participants_task(
                     continue
                 
                 try:
-                    # Check if exists
-                    result = await db.execute(
-                        select(Participant).where(
-                            Participant.event_id == event_uuid,
-                            Participant.email == email,
-                        )
-                    )
-                    existing = result.scalar_one_or_none()
+                    # Check if exists using in-memory lookup (O(1) instead of database query)
+                    existing = existing_by_email.get(email)
                     
                     if existing:
                         if update_existing:
@@ -731,28 +743,21 @@ async def bulk_import_participants_task(
                         else:
                             skipped += 1
                         
-                        # Update progress for skipped/updated records too
-                        processed = imported + updated + skipped
-                        if processed % 100 == 0:
-                            await db.commit()
+                        # Update progress every 500 records
+                        if (imported + updated + skipped) % 500 == 0:
                             await update_progress(imported, updated, skipped, errors_list, total)
                         continue
                     
-                    # Generate username
-                    username = p_data.get("username") or email.split("@")[0].lower()
-                    base_username = username
+                    # Generate unique username using in-memory set
+                    base_username = (p_data.get("username") or email.split("@")[0]).lower()
+                    username = base_username
                     counter = 1
-                    while True:
-                        result = await db.execute(
-                            select(Participant).where(
-                                Participant.event_id == event_uuid,
-                                Participant.username == username,
-                            )
-                        )
-                        if not result.scalar_one_or_none():
-                            break
+                    while username in existing_usernames:
                         username = f"{base_username}{counter}"
                         counter += 1
+                    
+                    # Add to set so next iteration knows it's taken
+                    existing_usernames.add(username)
                     
                     password = secrets.token_urlsafe(12) if generate_passwords else "changeme123"
                     
@@ -778,7 +783,7 @@ async def bulk_import_participants_task(
                     participant = Participant(
                         event_id=event_uuid,
                         email=email,
-                        username=username.lower(),
+                        username=username,
                         password_hash=hash_password(password),
                         name=p_data.get("name") or email.split("@")[0],
                         final_rank=final_rank,
@@ -789,19 +794,26 @@ async def bulk_import_participants_task(
                         source="import",
                     )
                     
-                    db.add(participant)
+                    new_participants.append(participant)
+                    # Also add to email lookup so duplicates in same CSV are caught
+                    existing_by_email[email] = participant
                     imported += 1
                     
-                    # Update progress every 100 processed records (regardless of import/skip/update)
-                    processed = imported + updated + skipped
-                    if processed % 100 == 0:
+                    # Batch insert every 500 new participants
+                    if len(new_participants) >= 500:
+                        db.add_all(new_participants)
                         await db.commit()
+                        new_participants = []
                         await update_progress(imported, updated, skipped, errors_list, total)
                     
                 except Exception as e:
                     errors_list.append({"row": i + 1, "email": email, "error": str(e)})
             
-            # Final commit
+            # Insert remaining participants
+            if new_participants:
+                db.add_all(new_participants)
+            
+            # Final commit for all updates and remaining inserts
             await db.commit()
         
         await update_progress(imported, updated, skipped, errors_list, total, "completed")
