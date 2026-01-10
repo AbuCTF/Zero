@@ -180,10 +180,10 @@ export const admin = {
 
 	// Participants
 	participants: {
-		list: (eventId: string, page = 1, search?: string) => {
-			let url = `/admin/events/${eventId}/participants?page=${page}`;
+		list: (eventId: string, page = 1, perPage = 50, search?: string) => {
+			let url = `/admin/events/${eventId}/participants?page=${page}&per_page=${perPage}`;
 			if (search) url += `&search=${encodeURIComponent(search)}`;
-			return request<{ participants: Participant[]; total: number; pages: number }>(url);
+			return request<{ participants: Participant[]; total: number; page: number; pages: number; per_page: number }>(url);
 		},
 
 		import: (eventId: string, data: { participants: ParticipantImport[]; generate_passwords: boolean }) =>

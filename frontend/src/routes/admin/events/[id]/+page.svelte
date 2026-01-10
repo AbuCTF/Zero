@@ -9,6 +9,11 @@
     
     let event = $state<Event | null>(null);
     let participants = $state<Participant[]>([]);
+    let totalParticipants = $state(0);
+    let totalVerified = $state(0);
+    let currentPage = $state(1);
+    let totalPages = $state(1);
+    let perPage = $state(50);
     let loading = $state(true);
     let error = $state('');
     let activeTab = $state<'overview' | 'participants' | 'prizes' | 'settings'>('overview');
@@ -102,8 +107,7 @@
         error = '';
         try {
             event = await api.admin.events.get(eventId);
-            const participantResponse = await api.admin.participants.list(eventId);
-            participants = participantResponse.participants || [];
+            await loadParticipants(1);
             
             // Populate edit form
             editForm = {
@@ -128,6 +132,29 @@
         } finally {
             loading = false;
         }
+    }
+
+    async function loadParticipants(page: number) {
+        try {
+            const response = await api.admin.participants.list(eventId, page, perPage);
+            participants = response.participants || [];
+            totalParticipants = response.total || 0;
+            currentPage = response.page || 1;
+            totalPages = response.pages || 1;
+            // Calculate verified count from event stats or estimate
+            totalVerified = event?.stats?.verified_count || participants.filter(p => p.email_verified).length;
+        } catch (e: any) {
+            error = e.message || 'Failed to load participants';
+        }
+    }
+
+    async function goToPage(page: number) {
+        if (page < 1 || page > totalPages) return;
+        await loadParticipants(page);
+    }
+
+    async function exportParticipants() {
+        window.open(`/api/admin/events/${eventId}/export/participants`, '_blank');
     }
 
     async function saveSettings() {
@@ -556,7 +583,7 @@
                     onclick={() => activeTab = 'participants'}
                     class="py-3 text-sm font-medium border-b-2 transition-colors {activeTab === 'participants' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}"
                 >
-                    Participants ({participants.length})
+                    Participants ({formatNumber(totalParticipants)})
                 </button>
                 <button 
                     onclick={() => activeTab = 'prizes'}
@@ -580,7 +607,7 @@
                     <div class="flex items-center justify-between">
                         <div>
                             <div class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Participants</div>
-                            <div class="text-2xl font-semibold mt-1 tracking-tight">{formatNumber(participants.length)}</div>
+                            <div class="text-2xl font-semibold mt-1 tracking-tight">{formatNumber(totalParticipants)}</div>
                         </div>
                         <div class="w-10 h-10 rounded-lg bg-accent/50 flex items-center justify-center text-muted-foreground group-hover:bg-accent transition-colors">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
@@ -592,7 +619,7 @@
                         <div>
                             <div class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Verified</div>
                             <div class="text-2xl font-semibold mt-1 tracking-tight">
-                                {formatNumber(participants.filter(p => p.email_verified).length)}
+                                {formatNumber(event?.stats?.verified_count || 0)}
                             </div>
                         </div>
                         <div class="w-10 h-10 rounded-lg bg-success/10 flex items-center justify-center text-success">
@@ -686,9 +713,13 @@
         {:else if activeTab === 'participants'}
             <div class="flex items-center justify-between mb-4">
                 <div class="text-sm text-muted-foreground">
-                    {participants.length} participant{participants.length !== 1 ? 's' : ''} registered
+                    Showing {participants.length} of {formatNumber(totalParticipants)} participant{totalParticipants !== 1 ? 's' : ''}
                 </div>
                 <div class="flex gap-2">
+                    <button onclick={exportParticipants} class="btn btn-secondary gap-2">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" /></svg>
+                        Export CSV
+                    </button>
                     <button onclick={() => showResultsImportModal = true} class="btn btn-secondary gap-2">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
                         Import Results
@@ -783,6 +814,61 @@
                         </tbody>
                     </table>
                 </div>
+
+                <!-- Pagination -->
+                {#if totalPages > 1}
+                    <div class="flex items-center justify-between mt-4">
+                        <div class="text-sm text-muted-foreground">
+                            Page {currentPage} of {totalPages}
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button 
+                                onclick={() => goToPage(1)}
+                                disabled={currentPage === 1}
+                                class="btn btn-ghost btn-sm"
+                            >
+                                First
+                            </button>
+                            <button 
+                                onclick={() => goToPage(currentPage - 1)}
+                                disabled={currentPage === 1}
+                                class="btn btn-ghost btn-sm"
+                            >
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
+                                Prev
+                            </button>
+                            
+                            <!-- Page numbers -->
+                            {#each Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                                const start = Math.max(1, Math.min(currentPage - 2, totalPages - 4));
+                                return start + i;
+                            }).filter(p => p <= totalPages) as pageNum}
+                                <button 
+                                    onclick={() => goToPage(pageNum)}
+                                    class="btn btn-sm {pageNum === currentPage ? 'btn-primary' : 'btn-ghost'}"
+                                >
+                                    {pageNum}
+                                </button>
+                            {/each}
+                            
+                            <button 
+                                onclick={() => goToPage(currentPage + 1)}
+                                disabled={currentPage === totalPages}
+                                class="btn btn-ghost btn-sm"
+                            >
+                                Next
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
+                            </button>
+                            <button 
+                                onclick={() => goToPage(totalPages)}
+                                disabled={currentPage === totalPages}
+                                class="btn btn-ghost btn-sm"
+                            >
+                                Last
+                            </button>
+                        </div>
+                    </div>
+                {/if}
             {/if}
 
         {:else if activeTab === 'prizes'}
