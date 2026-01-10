@@ -53,8 +53,10 @@ async def request_access(
     Request a magic link to access the participant portal.
     
     This sends an email with a one-time login link.
+    If the email is registered for multiple events, separate magic links
+    are sent for each event (per-event sessions for security isolation).
     """
-    # Find participant by email (could be in any event)
+    # Find ALL participants by email (could be in multiple events)
     result = await db.execute(
         select(Participant).where(
             Participant.email == data.email.lower(),
@@ -62,48 +64,51 @@ async def request_access(
             Participant.is_blocked == False,
         )
     )
-    participant = result.scalar_one_or_none()
+    participants = result.scalars().all()
     
     # Always return success to prevent email enumeration
-    if not participant:
+    if not participants:
         return BaseResponse(
             success=True,
             message="If your email is registered, you will receive an access link shortly.",
         )
     
-    # Rate limit: max 1 request per 5 minutes
-    if participant.magic_link_sent_at:
-        now = datetime.now(timezone.utc)
-        sent_at = participant.magic_link_sent_at
-        # Handle timezone-naive datetime
-        if sent_at.tzinfo is None:
-            sent_at = sent_at.replace(tzinfo=timezone.utc)
-        time_since_last = now - sent_at
-        if time_since_last < timedelta(minutes=5):
-            return BaseResponse(
-                success=True,
-                message="If your email is registered, you will receive an access link shortly.",
-            )
+    now = datetime.now(timezone.utc)
+    sent_count = 0
     
-    # Generate magic link token
-    magic_token = secrets.token_urlsafe(32)
-    participant.magic_link_token = magic_token
-    participant.magic_link_sent_at = datetime.now(timezone.utc)
-    participant.magic_link_expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
-    
-    await db.flush()
-    
-    # Get event for email context
-    event_result = await db.execute(
-        select(Event).where(Event.id == participant.event_id)
-    )
-    event = event_result.scalar_one_or_none()
-    
-    # Build magic link URL
-    magic_link_url = f"{settings.app_url}/portal/verify?token={magic_token}"
-    
-    # Send email
-    await _send_magic_link_email(db, redis, participant, event, magic_link_url)
+    # Process each participant (one per event) independently
+    for participant in participants:
+        # Rate limit: max 1 request per 5 minutes per event
+        if participant.magic_link_sent_at:
+            sent_at = participant.magic_link_sent_at
+            # Handle timezone-naive datetime
+            if sent_at.tzinfo is None:
+                sent_at = sent_at.replace(tzinfo=timezone.utc)
+            time_since_last = now - sent_at
+            if time_since_last < timedelta(minutes=5):
+                # Skip this event, but continue with others
+                continue
+        
+        # Generate magic link token for this event's participant
+        magic_token = secrets.token_urlsafe(32)
+        participant.magic_link_token = magic_token
+        participant.magic_link_sent_at = now
+        participant.magic_link_expires_at = now + timedelta(hours=1)
+        
+        await db.flush()
+        
+        # Get event for email context
+        event_result = await db.execute(
+            select(Event).where(Event.id == participant.event_id)
+        )
+        event = event_result.scalar_one_or_none()
+        
+        # Build magic link URL
+        magic_link_url = f"{settings.app_url}/portal/verify?token={magic_token}"
+        
+        # Send email for this event
+        await _send_magic_link_email(db, redis, participant, event, magic_link_url)
+        sent_count += 1
     
     return BaseResponse(
         success=True,

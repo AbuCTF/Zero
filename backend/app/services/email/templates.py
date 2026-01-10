@@ -244,7 +244,7 @@ If you didn't register for this event, you can safely ignore this email.
             <p>Good luck and have fun!</p>
         </div>
         <div class="footer">
-            <p>Questions? Join our Discord or contact the organizers.</p>
+            <p>Questions? {% if discord_url %}<a href="{{ discord_url }}">Join our Discord</a> or {% endif %}Contact the organizers.</p>
         </div>
     </div>
 </body>
@@ -265,9 +265,9 @@ Your credentials:
 
 Good luck and have fun!
 
-Questions? Join our Discord or contact the organizers.
+Questions? {% if discord_url %}Join our Discord at {{ discord_url }} or {% endif %}Contact the organizers.
         """,
-        "variables": ["event_name", "username", "ctfd_url"],
+        "variables": ["event_name", "username", "ctfd_url", "discord_url"],
     },
     
     "prize_ready": {

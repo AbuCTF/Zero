@@ -679,6 +679,9 @@ async def get_participant(
         username=participant.username,
         name=participant.name,
         email_verified=participant.email_verified,
+        email_verified_at=participant.email_verified_at,
+        ctfd_provisioned=participant.ctfd_provisioned,
+        ctfd_user_id=participant.ctfd_user_id,
         final_rank=participant.final_rank,
         final_score=participant.final_score,
         is_blocked=participant.is_blocked,
@@ -725,6 +728,9 @@ async def update_participant(
         username=participant.username,
         name=participant.name,
         email_verified=participant.email_verified,
+        email_verified_at=participant.email_verified_at,
+        ctfd_provisioned=participant.ctfd_provisioned,
+        ctfd_user_id=participant.ctfd_user_id,
         final_rank=participant.final_rank,
         final_score=participant.final_score,
         is_blocked=participant.is_blocked,
@@ -858,9 +864,21 @@ async def generate_certificates_for_event(
     
     await db.flush()
     
+    # Queue background task to render certificates
+    try:
+        redis = await get_redis()
+        await redis.enqueue_job(
+            "bulk_generate_certificates_task",
+            str(event_id),
+            "png",
+        )
+    except Exception as e:
+        # Don't fail if redis isn't available
+        pass
+    
     return BaseResponse(
         success=True,
-        message=f"Created {created} certificates, skipped {skipped} existing.",
+        message=f"Created {created} certificates, skipped {skipped} existing. Rendering queued.",
     )
 
 
@@ -1956,6 +1974,29 @@ async def create_certificate_template(
     db.add(template)
     await db.flush()
     
+    # Auto-generate certificates for all participants when template is marked as default
+    if data.is_default:
+        result = await db.execute(
+            select(Participant).where(Participant.event_id == data.event_id)
+        )
+        participants = result.scalars().all()
+        for participant in participants:
+            # Check if participant already has a certificate
+            cert_result = await db.execute(
+                select(Certificate).where(Certificate.participant_id == participant.id)
+            )
+            existing_cert = cert_result.scalar_one_or_none()
+            if not existing_cert:
+                cert = Certificate(
+                    participant_id=participant.id,
+                    template_id=template.id,
+                    display_name=participant.name or participant.username or participant.email.split("@")[0],
+                    rank=participant.final_rank,
+                    verification_code=secrets.token_urlsafe(16),
+                )
+                db.add(cert)
+        await db.flush()
+    
     return CertificateTemplateResponse(
         id=template.id,
         event_id=template.event_id,
@@ -2118,6 +2159,29 @@ async def update_certificate_template(
             for existing in result.scalars().all():
                 existing.is_default = False
         template.is_default = data.is_default
+        
+        # AUTO-GENERATE certificates when template is marked as default
+        if data.is_default:
+            result = await db.execute(
+                select(Participant).where(Participant.event_id == template.event_id)
+            )
+            participants = result.scalars().all()
+            
+            for participant in participants:
+                # Check if certificate already exists
+                cert_result = await db.execute(
+                    select(Certificate).where(Certificate.participant_id == participant.id)
+                )
+                if not cert_result.scalar_one_or_none():
+                    cert = Certificate(
+                        participant_id=participant.id,
+                        template_id=template.id,
+                        display_name=participant.name or participant.username or participant.email.split("@")[0],
+                        team_name=None,
+                        rank=participant.final_rank,
+                        verification_code=secrets.token_urlsafe(16),
+                    )
+                    db.add(cert)
     
     # Handle background_image update
     if data.background_image is not None:
