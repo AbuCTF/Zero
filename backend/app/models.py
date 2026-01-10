@@ -882,6 +882,10 @@ class Certificate(TimestampMixin, Base):
     downloaded_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     download_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     
+    # Abuse prevention
+    name_locked: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    edit_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    
     # Relationships
     participant: Mapped["Participant"] = relationship(
         "Participant", back_populates="certificates"

@@ -694,6 +694,8 @@ async def get_participant_certificates(
             "generated_at": c.generated_at.isoformat() if c.generated_at else None,
             "downloaded_at": c.downloaded_at.isoformat() if c.downloaded_at else None,
             "download_count": c.download_count,
+            "name_locked": c.name_locked,
+            "edit_count": c.edit_count,
             "created_at": c.created_at.isoformat() if c.created_at else None,
         })
     
@@ -873,9 +875,14 @@ async def download_certificate(
         certificate.generated_at = datetime.now(timezone.utc)
         await db.flush()
     
-    # Update download tracking
+    # Update download tracking and lock name
     certificate.download_count += 1
     certificate.downloaded_at = datetime.now(timezone.utc)
+    
+    # Lock the name on first download to prevent abuse
+    if not certificate.name_locked:
+        certificate.name_locked = True
+    
     await db.commit()
     
     # Determine content type
@@ -892,7 +899,8 @@ async def download_certificate(
 @router.patch("/me/certificates/{cert_id}")
 async def update_certificate_display_name(
     cert_id: str,
-    request: CertificateCustomizeRequest,
+    request_obj: Request,
+    data: CertificateCustomizeRequest,
     participant: Participant = Depends(require_verified_participant),
     db: AsyncSession = Depends(get_session),
 ):
@@ -901,6 +909,10 @@ async def update_certificate_display_name(
     
     Allows participants to customize how their name appears on the certificate.
     This will regenerate the certificate on next download.
+    
+    **Abuse Prevention:**
+    - Name is locked after first certificate download
+    - Only ONE name edit is allowed before download
     """
     from uuid import UUID as PyUUID
     from datetime import datetime, timezone
@@ -928,17 +940,57 @@ async def update_certificate_display_name(
             detail="Certificate not found",
         )
     
-    # Update the display name
-    certificate.display_name = request.display_name.strip()
+    # Abuse Prevention: Check if name is locked (already downloaded)
+    if certificate.name_locked:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Certificate name is locked. Name cannot be changed after a certificate has been downloaded.",
+        )
     
-    # Clear the file path to force regeneration on next download
-    if certificate.file_path and os.path.exists(certificate.file_path):
-        try:
-            os.remove(certificate.file_path)
-        except OSError:
-            pass
-    certificate.file_path = None
-    certificate.generated_at = None
+    # Abuse Prevention: Limit name edits to 1
+    MAX_NAME_EDITS = 1
+    if certificate.edit_count >= MAX_NAME_EDITS:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Name edit limit reached. You can only edit the display name {MAX_NAME_EDITS} time(s).",
+        )
+    
+    # Store old name for audit
+    old_display_name = certificate.display_name
+    new_display_name = data.display_name.strip()
+    
+    # If the name is actually changing, update and track
+    if old_display_name != new_display_name:
+        # Update the display name
+        certificate.display_name = new_display_name
+        certificate.edit_count += 1
+        
+        # Clear the file path to force regeneration on next download
+        if certificate.file_path and os.path.exists(certificate.file_path):
+            try:
+                os.remove(certificate.file_path)
+            except OSError:
+                pass
+        certificate.file_path = None
+        certificate.generated_at = None
+        
+        # Create audit log for name change
+        client_ip = get_client_ip(request_obj)
+        audit_log = AuditLog(
+            participant_id=participant.id,
+            actor_type="participant",
+            action="certificate.name_edit",
+            resource_type="certificate",
+            resource_id=str(certificate.id),
+            details={
+                "old_display_name": old_display_name,
+                "new_display_name": new_display_name,
+                "edit_count": certificate.edit_count,
+                "certificate_id": str(certificate.id),
+            },
+            ip_address=client_ip,
+        )
+        db.add(audit_log)
     
     await db.commit()
     
@@ -946,4 +998,6 @@ async def update_certificate_display_name(
         "success": True,
         "message": "Display name updated successfully",
         "display_name": certificate.display_name,
+        "edits_remaining": MAX_NAME_EDITS - certificate.edit_count,
     }
+

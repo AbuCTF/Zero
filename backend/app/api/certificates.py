@@ -309,10 +309,14 @@ async def download_certificate(
             detail="Certificate file not found",
         )
     
-    # Update download count
+    # Update download count and lock name
     cert.download_count += 1
     if not cert.downloaded_at:
         cert.downloaded_at = datetime.utcnow()
+    
+    # Lock the name on first download to prevent abuse
+    if not cert.name_locked:
+        cert.name_locked = True
     
     await db.flush()
     

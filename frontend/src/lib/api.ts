@@ -719,6 +719,9 @@ export interface Certificate {
 	generated_at?: string;
 	downloaded_at?: string;
 	download_count: number;
+	display_name?: string;
+	name_locked?: boolean;
+	edit_count?: number;
 	created_at: string;
 }
 
