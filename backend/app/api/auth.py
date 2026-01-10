@@ -503,7 +503,7 @@ async def verify_email(
             "name": event.name,
             "slug": event.slug,
             "discord_url": event_settings.get("discord_url"),
-            "event_url": event_settings.get("event_url") or event.ctfd_url,
+            "event_url": event_settings.get("site_url") or event.ctfd_url,
         }
     
     return AuthResponse(
@@ -727,9 +727,35 @@ async def forgot_password(
         token = secrets.token_urlsafe(32)
         await redis.setex(f"password_reset:admin:{token}", 3600, str(user.id))
         
-        # TODO: Send password reset email to admin
-        # For now, log the token (in production, send email)
-        reset_url = f"{settings.app_url}/admin/reset-password?token={token}"
+        # Build reset URL
+        reset_url = f"{settings.app_url}/reset-password?token={token}"
+        
+        # Send password reset email
+        from app.services.email.orchestrator import EmailOrchestrator
+        try:
+            orchestrator = EmailOrchestrator(redis)
+            await orchestrator.send_single(
+                to_email=user.email,
+                subject="Reset Your Password - ZeroPool",
+                html_body=f"""
+                <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+                    <h2>Reset Your Password</h2>
+                    <p>Hi {user.username},</p>
+                    <p>You requested to reset your password. Click the button below to set a new password:</p>
+                    <p style="margin: 24px 0;">
+                        <a href="{reset_url}" style="background: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; display: inline-block;">Reset Password</a>
+                    </p>
+                    <p>This link will expire in 1 hour.</p>
+                    <p>If you didn't request this, you can safely ignore this email.</p>
+                    <hr style="margin: 24px 0; border: none; border-top: 1px solid #e5e7eb;">
+                    <p style="color: #6b7280; font-size: 12px;">ZeroPool - Event Management Platform</p>
+                </div>
+                """,
+                text_body=f"Reset your password: {reset_url}\n\nThis link expires in 1 hour.",
+            )
+        except Exception as e:
+            # Log error but don't reveal to user
+            pass
         
         # Log the request
         audit_log = AuditLog(
