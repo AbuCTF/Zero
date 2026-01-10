@@ -398,6 +398,18 @@ async def update_event(
     
     if data.name is not None:
         event.name = data.name
+    if data.slug is not None:
+        # Validate and normalize slug
+        import re
+        new_slug = re.sub(r'[^a-z0-9-]', '', data.slug.lower().replace(' ', '-'))
+        if new_slug and new_slug != event.slug:
+            # Check for uniqueness
+            result = await db.execute(
+                select(Event).where(Event.slug == new_slug, Event.id != event_id)
+            )
+            if result.scalar_one_or_none():
+                raise HTTPException(status_code=400, detail="Slug already in use by another event")
+            event.slug = new_slug
     if data.description is not None:
         event.description = data.description
     if data.registration_start is not None:
@@ -887,6 +899,7 @@ async def import_participants(
     event_id: UUID,
     file: UploadFile = File(...),
     generate_passwords: bool = True,
+    update_existing: bool = True,
     request: Request = None,
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
@@ -898,6 +911,12 @@ async def import_participants(
     - .json: Array of participant objects
     
     Only email is required - all other fields are auto-generated if missing.
+    
+    Behavior:
+    - New participants are added
+    - Existing participants (by email) are updated with new data if update_existing=True
+    - Field names are normalized (e.g., "E-mail", "email", "EMAIL" all work)
+    - Extra columns in CSV are preserved in extra_data
     """
     import json as json_lib
     import re
@@ -961,6 +980,7 @@ async def import_participants(
         raise HTTPException(status_code=400, detail="No valid participants found in file")
     
     imported = 0
+    updated = 0
     skipped = 0
     errors = []
     
@@ -979,8 +999,55 @@ async def import_participants(
                     Participant.email == email,
                 )
             )
-            if result.scalar_one_or_none():
-                skipped += 1
+            existing = result.scalar_one_or_none()
+            
+            if existing:
+                if update_existing:
+                    # Update existing participant with new data
+                    was_updated = False
+                    
+                    # Update name if provided
+                    new_name = p_data.get("name")
+                    if new_name and new_name != existing.name:
+                        existing.name = new_name
+                        was_updated = True
+                    
+                    # Update rank if provided
+                    if p_data.get("rank"):
+                        try:
+                            new_rank = int(p_data["rank"])
+                            if new_rank != existing.final_rank:
+                                existing.final_rank = new_rank
+                                was_updated = True
+                        except (ValueError, TypeError):
+                            pass
+                    
+                    # Update score if provided
+                    if p_data.get("score"):
+                        try:
+                            new_score = float(p_data["score"])
+                            if new_score != existing.final_score:
+                                existing.final_score = new_score
+                                was_updated = True
+                        except (ValueError, TypeError):
+                            pass
+                    
+                    # Update extra_data with new fields
+                    extra_data = existing.extra_data or {}
+                    if p_data.get("team_name"):
+                        extra_data["team_name"] = p_data["team_name"]
+                    if p_data.get("_extra"):
+                        extra_data.update(p_data["_extra"])
+                    if extra_data != existing.extra_data:
+                        existing.extra_data = extra_data
+                        was_updated = True
+                    
+                    if was_updated:
+                        updated += 1
+                    else:
+                        skipped += 1
+                else:
+                    skipped += 1
                 continue
             
             # Auto-generate username from email if not provided
@@ -1061,6 +1128,7 @@ async def import_participants(
         ip_address=get_client_ip(request),
         metadata={
             "imported": imported,
+            "updated": updated,
             "skipped": skipped,
             "errors": len(errors),
             "source_file": file.filename,
@@ -1072,6 +1140,7 @@ async def import_participants(
     return ParticipantImportResponse(
         success=True,
         imported=imported,
+        updated=updated,
         skipped=skipped,
         errors=errors,
     )

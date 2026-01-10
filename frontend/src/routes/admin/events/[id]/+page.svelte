@@ -20,7 +20,8 @@
     let showImportModal = $state(false);
     let importFile = $state<File | null>(null);
     let importing = $state(false);
-    let importResult = $state<{ created: number; updated: number; errors: string[] } | null>(null);
+    let updateExisting = $state(true);
+    let importResult = $state<{ imported: number; updated: number; skipped: number; errors: any[] } | null>(null);
 
     let editForm = $state({
         name: '',
@@ -130,7 +131,8 @@
             const formData = new FormData();
             formData.append('file', importFile);
             
-            const response = await fetch(`/api/admin/events/${eventId}/participants/import`, {
+            const url = `/api/admin/events/${eventId}/participants/import?update_existing=${updateExisting}`;
+            const response = await fetch(url, {
                 method: 'POST',
                 body: formData,
                 credentials: 'include'
@@ -604,12 +606,16 @@
             <div class="p-6 space-y-4">
                 {#if importResult}
                     <div class="space-y-3">
-                        <div class="grid grid-cols-2 gap-4">
-                            <div class="bg-accent/50 rounded-lg p-4 text-center">
+                        <div class="grid grid-cols-3 gap-3">
+                            <div class="bg-accent/50 rounded-lg p-3 text-center">
                                 <div class="text-2xl font-semibold text-foreground">{importResult.imported || 0}</div>
-                                <div class="text-xs text-muted-foreground">Imported</div>
+                                <div class="text-xs text-muted-foreground">New</div>
                             </div>
-                            <div class="bg-muted/50 rounded-lg p-4 text-center">
+                            <div class="bg-primary/10 rounded-lg p-3 text-center">
+                                <div class="text-2xl font-semibold text-primary">{importResult.updated || 0}</div>
+                                <div class="text-xs text-muted-foreground">Updated</div>
+                            </div>
+                            <div class="bg-muted/50 rounded-lg p-3 text-center">
                                 <div class="text-2xl font-semibold text-muted-foreground">{importResult.skipped || 0}</div>
                                 <div class="text-xs text-muted-foreground">Skipped</div>
                             </div>
@@ -627,6 +633,18 @@
                                 </ul>
                             </div>
                         {/if}
+                    </div>
+                {:else if importing}
+                    <!-- Progress indicator while importing -->
+                    <div class="text-center py-8">
+                        <div class="inline-block w-12 h-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin mb-4"></div>
+                        <p class="text-sm font-medium">Importing participants...</p>
+                        {#if importFile}
+                            <p class="text-xs text-muted-foreground mt-1">Processing {importFile.name}</p>
+                        {/if}
+                        <p class="text-xs text-muted-foreground mt-3">
+                            This may take a moment for large files
+                        </p>
                     </div>
                 {:else}
                     <div class="space-y-4">
@@ -647,6 +665,18 @@
                                 <p class="text-sm text-muted-foreground">Click to select a file</p>
                             {/if}
                         </label>
+                        
+                        <!-- Update existing checkbox -->
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input 
+                                type="checkbox" 
+                                bind:checked={updateExisting}
+                                class="rounded border-border"
+                            />
+                            <span class="text-sm">Update existing participants</span>
+                            <span class="text-xs text-muted-foreground">(rank, score, name)</span>
+                        </label>
+                        
                         <div class="text-xs text-muted-foreground space-y-1">
                             <p class="font-medium">Supported formats:</p>
                             <ul class="list-disc list-inside text-muted-foreground/80 space-y-0.5">
@@ -654,6 +684,9 @@
                                 <li><code class="font-mono text-foreground/70">.csv</code> — email required; username, name, rank, score optional</li>
                                 <li><code class="font-mono text-foreground/70">.json</code> — Array of participant objects</li>
                             </ul>
+                            <p class="mt-2 text-muted-foreground/70">
+                                Batch imports add new participants. Column order doesn't matter.
+                            </p>
                         </div>
                     </div>
                 {/if}

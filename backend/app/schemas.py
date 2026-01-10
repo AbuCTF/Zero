@@ -204,6 +204,7 @@ class EventCreate(BaseModel):
 class EventUpdate(BaseModel):
     """Update event request."""
     name: Optional[str] = Field(None, max_length=255)
+    slug: Optional[str] = Field(None, max_length=100)
     description: Optional[str] = None
     registration_start: Optional[datetime] = None
     registration_end: Optional[datetime] = None
@@ -317,6 +318,7 @@ class ParticipantImportRequest(BaseModel):
 class ParticipantImportResponse(BaseResponse):
     """Bulk import response."""
     imported: int
+    updated: int = 0
     skipped: int
     errors: List[Dict[str, Any]]
 
