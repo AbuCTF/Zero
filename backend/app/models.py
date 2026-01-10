@@ -317,19 +317,19 @@ class Participant(TimestampMixin, Base):
         String(50), default="registration", nullable=False
     )  # 'registration' or 'import'
     
-    # Relationships
+    # Relationships - use noload by default for list views, load explicitly when needed
     event: Mapped["Event"] = relationship("Event", back_populates="participants")
     team_memberships: Mapped[List["TeamMember"]] = relationship(
-        "TeamMember", back_populates="participant", lazy="selectin", cascade="all, delete-orphan"
+        "TeamMember", back_populates="participant", lazy="noload", cascade="all, delete-orphan"
     )
     prizes: Mapped[List["Prize"]] = relationship(
-        "Prize", back_populates="participant", lazy="selectin", cascade="all, delete-orphan"
+        "Prize", back_populates="participant", lazy="noload", cascade="all, delete-orphan"
     )
     certificates: Mapped[List["Certificate"]] = relationship(
-        "Certificate", back_populates="participant", lazy="selectin", cascade="all, delete-orphan"
+        "Certificate", back_populates="participant", lazy="noload", cascade="all, delete-orphan"
     )
     email_logs: Mapped[List["EmailLog"]] = relationship(
-        "EmailLog", back_populates="participant", lazy="selectin", cascade="all, delete-orphan"
+        "EmailLog", back_populates="participant", lazy="noload", cascade="all, delete-orphan"
     )
 
     __table_args__ = (
@@ -338,6 +338,7 @@ class Participant(TimestampMixin, Base):
         Index("idx_participants_event", "event_id"),
         Index("idx_participants_email", "email"),
         Index("idx_participants_ctfd_user_id", "ctfd_user_id"),
+        Index("idx_participants_event_created", "event_id", "created_at"),  # For sorted list queries
     )
 
 

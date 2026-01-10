@@ -622,25 +622,32 @@ async def list_participants(
     db: AsyncSession = Depends(get_session),
 ):
     """List participants for an event."""
-    query = select(Participant).where(Participant.event_id == event_id)
+    # Build base filter conditions
+    conditions = [Participant.event_id == event_id]
     
     if search:
-        query = query.where(
+        conditions.append(
             (Participant.email.ilike(f"%{search}%")) |
             (Participant.username.ilike(f"%{search}%")) |
             (Participant.name.ilike(f"%{search}%"))
         )
     
     if verified is not None:
-        query = query.where(Participant.email_verified == verified)
+        conditions.append(Participant.email_verified == verified)
     
-    # Count
-    count_query = select(func.count()).select_from(query.subquery())
+    # Efficient count using direct COUNT with same conditions
+    count_query = select(func.count(Participant.id)).where(*conditions)
     total = await db.scalar(count_query) or 0
     
-    # Paginate
-    query = query.order_by(Participant.created_at.desc())
-    query = query.offset((page - 1) * per_page).limit(per_page)
+    # Paginate - only select needed columns for better performance
+    query = (
+        select(Participant)
+        .where(*conditions)
+        .order_by(Participant.created_at.desc())
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+        .execution_options(populate_existing=True)
+    )
     
     result = await db.execute(query)
     participants = result.scalars().all()

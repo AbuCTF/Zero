@@ -72,6 +72,12 @@
     // Manual assignment
     let showAssignModal = $state(false);
     let assigningParticipant = $state<Participant | null>(null);
+    
+    // Prizes tab search
+    let prizeSearchQuery = $state('');
+    let prizeSearchResults = $state<Participant[]>([]);
+    let searchingPrize = $state(false);
+    
     let assignForm = $state({
         certificate_template_id: '',
         custom_prize_title: '',
@@ -434,6 +440,19 @@
         assigningParticipant = participant;
         assignForm = { certificate_template_id: '', custom_prize_title: '', custom_prize_description: '' };
         showAssignModal = true;
+    }
+
+    async function searchParticipantsForPrize() {
+        if (!prizeSearchQuery.trim()) return;
+        searchingPrize = true;
+        try {
+            const response = await api.admin.participants.list(eventId, 1, 50, prizeSearchQuery);
+            prizeSearchResults = response.participants || [];
+        } catch (e: any) {
+            error = e.message || 'Search failed';
+        } finally {
+            searchingPrize = false;
+        }
     }
 
     async function assignPrize() {
@@ -927,12 +946,33 @@
                 <div class="card p-6">
                     <div class="mb-4">
                         <h3 class="font-medium">Manual Prize Assignment</h3>
-                        <p class="text-sm text-muted-foreground">Assign specific certificates or prizes to individual participants</p>
+                        <p class="text-sm text-muted-foreground">Search for participants to assign prizes manually</p>
                     </div>
 
-                    {#if participants.length === 0}
-                        <p class="text-muted-foreground text-sm">No participants to assign prizes to.</p>
-                    {:else}
+                    <!-- Search Box -->
+                    <div class="flex gap-2 mb-4">
+                        <input
+                            type="text"
+                            bind:value={prizeSearchQuery}
+                            placeholder="Search by name, email, or username..."
+                            class="input flex-1"
+                            onkeydown={(e) => e.key === 'Enter' && searchParticipantsForPrize()}
+                        />
+                        <button 
+                            onclick={searchParticipantsForPrize}
+                            disabled={searchingPrize || !prizeSearchQuery.trim()}
+                            class="btn btn-primary gap-2"
+                        >
+                            {#if searchingPrize}
+                                <span class="loading loading-spinner loading-sm"></span>
+                            {:else}
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                            {/if}
+                            Search
+                        </button>
+                    </div>
+
+                    {#if prizeSearchResults.length > 0}
                         <div class="overflow-hidden rounded-lg border border-border">
                             <table class="w-full">
                                 <thead class="bg-muted/50">
@@ -944,10 +984,10 @@
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y divide-border">
-                                    {#each participants.slice(0, 20) as participant}
+                                    {#each prizeSearchResults as participant}
                                         <tr class="hover:bg-muted/30">
                                             <td class="px-4 py-3">
-                                                <div class="font-medium">{participant.name}</div>
+                                                <div class="font-medium">{participant.name || participant.username}</div>
                                                 <div class="text-xs text-muted-foreground">{participant.email}</div>
                                             </td>
                                             <td class="px-4 py-3">
@@ -970,9 +1010,11 @@
                                 </tbody>
                             </table>
                         </div>
-                        {#if participants.length > 20}
-                            <p class="text-sm text-muted-foreground mt-2">Showing first 20 participants. Use prize rules for bulk assignment.</p>
-                        {/if}
+                        <p class="text-sm text-muted-foreground mt-2">Found {prizeSearchResults.length} participant(s)</p>
+                    {:else if prizeSearchQuery && !searchingPrize}
+                        <p class="text-muted-foreground text-sm text-center py-8">No results. Try searching for a participant.</p>
+                    {:else}
+                        <p class="text-muted-foreground text-sm text-center py-8">Enter a search term to find participants</p>
                     {/if}
                 </div>
             </div>
