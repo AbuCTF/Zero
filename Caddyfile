@@ -1,16 +1,13 @@
-{$DOMAIN} {
-    # Frontend
-    handle {
-        reverse_proxy web:3000
-    }
-    
-    # API
+:80 {
     handle /api/* {
         reverse_proxy api:8000
     }
-    
-    # Uploads (static files)
+
     handle /uploads/* {
         reverse_proxy api:8000
+    }
+
+    handle {
+        reverse_proxy web:3000
     }
 }
