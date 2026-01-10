@@ -42,7 +42,7 @@ async def add_admin(email: str, name: str, password: str):
             email=email.lower(),
             password_hash=hash_password(password),
             name=name,
-            role=UserRole.admin,
+            role=UserRole.ADMIN,
             is_active=True,
         )
         db.add(user)
@@ -56,7 +56,7 @@ async def list_admins():
     """List all admin users."""
     async with async_session() as db:
         result = await db.execute(
-            select(User).where(User.role == UserRole.admin).order_by(User.created_at)
+            select(User).where(User.role == UserRole.ADMIN).order_by(User.created_at)
         )
         users = result.scalars().all()
         
