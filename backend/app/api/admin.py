@@ -413,10 +413,12 @@ async def update_event(
             event.slug = new_slug
     if data.description is not None:
         event.description = data.description
-    if data.registration_start is not None:
-        event.registration_start = data.registration_start
-    if data.registration_end is not None:
-        event.registration_end = data.registration_end
+    reg_start = data.get_registration_start()
+    if reg_start is not None:
+        event.registration_start = reg_start
+    reg_end = data.get_registration_end()
+    if reg_end is not None:
+        event.registration_end = reg_end
     if data.event_start is not None:
         event.event_start = data.event_start
     if data.event_end is not None:

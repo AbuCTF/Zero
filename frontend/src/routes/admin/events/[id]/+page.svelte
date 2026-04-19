@@ -122,8 +122,8 @@
                 description: event.description || '',
                 start_date: event.start_date?.slice(0, 16) || '',
                 end_date: event.end_date?.slice(0, 16) || '',
-                registration_open: event.registration_open?.slice(0, 16) || '',
-                registration_close: event.registration_close?.slice(0, 16) || '',
+                registration_open: event.registration_start?.slice(0, 16) || '',
+                registration_close: event.registration_end?.slice(0, 16) || '',
                 max_participants: event.max_participants,
                 team_mode: event.team_mode,
                 min_team_size: event.min_team_size || 1,
@@ -683,11 +683,11 @@
                     <div class="space-y-3 text-sm">
                         <div class="flex justify-between items-center py-2 border-b border-border/50">
                             <span class="text-muted-foreground">Registration Opens</span>
-                            <span class="font-medium">{event.registration_open ? formatDate(event.registration_open) : '—'}</span>
+                            <span class="font-medium">{event.registration_start ? formatDate(event.registration_start) : '—'}</span>
                         </div>
                         <div class="flex justify-between items-center py-2 border-b border-border/50">
                             <span class="text-muted-foreground">Registration Closes</span>
-                            <span class="font-medium">{event.registration_close ? formatDate(event.registration_close) : '—'}</span>
+                            <span class="font-medium">{event.registration_end ? formatDate(event.registration_end) : '—'}</span>
                         </div>
                         <div class="flex justify-between items-center py-2 border-b border-border/50">
                             <span class="text-muted-foreground">Event Starts</span>

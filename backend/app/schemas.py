@@ -208,13 +208,15 @@ class EventUpdate(BaseModel):
     description: Optional[str] = None
     registration_start: Optional[datetime] = None
     registration_end: Optional[datetime] = None
+    registration_open: Optional[datetime] = None   # Alias for registration_start
+    registration_close: Optional[datetime] = None  # Alias for registration_end
     event_start: Optional[datetime] = None
     event_end: Optional[datetime] = None
     status: Optional[str] = None
     ctfd_url: Optional[str] = None
     ctfd_api_key: Optional[str] = None
     settings: Optional[Dict[str, Any]] = None
-    
+
     # Settings fields that frontend sends as top-level
     is_import_only: Optional[bool] = None
     team_mode: Optional[bool] = None
@@ -223,6 +225,12 @@ class EventUpdate(BaseModel):
     max_team_size: Optional[int] = None
     discord_url: Optional[str] = None
     site_url: Optional[str] = None
+
+    def get_registration_start(self) -> Optional[datetime]:
+        return self.registration_start or self.registration_open
+
+    def get_registration_end(self) -> Optional[datetime]:
+        return self.registration_end or self.registration_close
 
 
 class EventResponse(BaseModel):

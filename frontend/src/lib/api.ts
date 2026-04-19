@@ -444,8 +444,10 @@ export interface Event {
 	slug: string;
 	description?: string;
 	status: 'draft' | 'registration' | 'active' | 'completed' | 'finalized' | 'archived';
-	registration_open?: string;
-	registration_close?: string;
+	registration_start?: string;
+	registration_end?: string;
+	registration_open?: string;   // legacy alias
+	registration_close?: string;  // legacy alias
 	start_date?: string;
 	end_date?: string;
 	max_participants?: number | null;
