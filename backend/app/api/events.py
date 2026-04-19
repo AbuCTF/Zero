@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_redis
 from app.config import get_settings
 from app.database import get_session
-from app.models import Event, EventStatus, Participant, EmailProvider
+from app.models import Event, EventStatus, Participant, EmailProvider, User
 from app.schemas import EventListResponse, EventResponse
 from app.services.email import EmailMessage, EmailOrchestrator, render_email, render_subject
 from app.utils.security import hash_password
@@ -244,6 +244,16 @@ async def register_for_event(
                 detail="Event has reached maximum capacity",
             )
     
+    # Block organizer/admin emails from registering as participants
+    admin_check = await db.execute(
+        select(User).where(User.email == data.email.lower())
+    )
+    if admin_check.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Organizer accounts cannot register as participants",
+        )
+
     # Check if email already registered
     existing = await db.execute(
         select(Participant).where(
