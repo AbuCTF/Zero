@@ -27,6 +27,7 @@ from app.database import get_session
 from app.models import AuditLog, Certificate, EmailLog, EmailStatus, Event, Participant, Prize, Session, Team, TeamMember
 from app.schemas import BaseResponse, CertificateCustomizeRequest, ParticipantResponse, ParticipantUpdate
 from app.services.email import EmailMessage, EmailOrchestrator, render_email, render_subject
+from app.utils.ratelimit import rate_limit
 
 router = APIRouter()
 settings = get_settings()
@@ -58,7 +59,11 @@ class RequestAccessResponse(BaseModel):
     events: list[EventInfo] = []
 
 
-@router.post("/request-access", response_model=RequestAccessResponse)
+@router.post(
+    "/request-access",
+    response_model=RequestAccessResponse,
+    dependencies=[Depends(rate_limit("participants:request-access", (5, 60), (20, 3600)))],
+)
 async def request_access(
     request: Request,
     data: RequestAccessRequest,

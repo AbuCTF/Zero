@@ -328,4 +328,59 @@ Thank you for playing!
         """,
         "variables": ["event_name", "name", "rank", "score", "claim_url"],
     },
+
+    "password_reset": {
+        "name": "Password Reset",
+        "slug": "password_reset",
+        "subject": "Reset your password",
+        "body_html": """
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #1a1a1a; }
+        .container { max-width: 600px; margin: 0 auto; padding: 40px 20px; }
+        .header { text-align: center; margin-bottom: 30px; }
+        .content { background: #f8f9fa; padding: 30px; border-radius: 8px; }
+        .button { display: inline-block; background: #18181b; color: #ffffff !important; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: 500; }
+        .footer { text-align: center; margin-top: 30px; font-size: 14px; color: #6b7280; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Reset your password</h1>
+        </div>
+        <div class="content">
+            <p>Hello <strong>{{ name }}</strong>,</p>
+            <p>We received a request to reset your password{% if event_name %} for <strong>{{ event_name }}</strong>{% endif %}. Click the button below to set a new one:</p>
+            <p style="text-align: center; margin: 30px 0;">
+                <a href="{{ reset_url }}" class="button">Reset Password</a>
+            </p>
+            <p>Or copy and paste this link into your browser:</p>
+            <p style="word-break: break-all; font-size: 14px; color: #6b7280;">{{ reset_url }}</p>
+            <p>This link will expire in 1 hour.</p>
+        </div>
+        <div class="footer">
+            <p>If you didn't request this, you can safely ignore this email.</p>
+        </div>
+    </div>
+</body>
+</html>
+        """,
+        "body_text": """
+Hello {{ name }},
+
+We received a request to reset your password{% if event_name %} for {{ event_name }}{% endif %}. Visit this link to set a new one:
+
+{{ reset_url }}
+
+This link will expire in 1 hour.
+
+If you didn't request this, you can safely ignore this email.
+        """,
+        "variables": ["name", "reset_url", "event_name"],
+    },
 }

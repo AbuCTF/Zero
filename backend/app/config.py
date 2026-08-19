@@ -4,11 +4,23 @@ ZeroPool Configuration
 All configuration is loaded from environment variables with sensible defaults.
 """
 
+import logging
 from functools import lru_cache
 from typing import List, Optional
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
+
+# Known insecure placeholder values shipped in defaults / .env.example.
+# If any of these are still in use at startup we warn loudly (but never crash).
+_INSECURE_PLACEHOLDERS = {
+    "admin_password": {"changeme123"},
+    "secret_key": {"your-super-secret-key-change-this-in-production"},
+    "cert_salt": {"change-this-salt", "your-certificate-salt-change-this"},
+    "encryption_key": {None, "", "your-encryption-key-change-this"},
+}
 
 
 class Settings(BaseSettings):
@@ -136,11 +148,28 @@ class Settings(BaseSettings):
         return v.upper()
 
 
+def _warn_on_insecure_defaults(settings: "Settings") -> None:
+    """
+    Emit a startup WARNING (never crash) when secrets are left at their
+    known placeholder/default values.
+    """
+    for field, placeholders in _INSECURE_PLACEHOLDERS.items():
+        value = getattr(settings, field, None)
+        if value in placeholders:
+            logger.warning(
+                "Insecure configuration: %s is set to a known placeholder/default "
+                "value. Set a strong, unique value before running in production.",
+                field.upper(),
+            )
+
+
 @lru_cache
 def get_settings() -> Settings:
     """
     Get cached settings instance.
-    
+
     Uses lru_cache to ensure settings are only loaded once.
     """
-    return Settings()
+    settings = Settings()
+    _warn_on_insecure_defaults(settings)
+    return settings

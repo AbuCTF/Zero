@@ -15,6 +15,7 @@ Comprehensive admin endpoints for managing:
 
 import csv
 import io
+import logging
 import secrets
 from datetime import datetime
 from pathlib import Path
@@ -87,7 +88,10 @@ from app.schemas import (
     VoucherUploadRequest,
 )
 from app.services.email import EmailMessage, EmailOrchestrator
+from app.utils.net import validate_public_url
 from app.utils.security import encrypt_data, hash_password
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 settings = get_settings()
@@ -295,6 +299,10 @@ async def create_event(
             detail="Event slug already exists",
         )
     
+    # Validate CTFd URL against SSRF (public https host only)
+    if data.ctfd_url:
+        validate_public_url(data.ctfd_url)
+
     # Encrypt CTFd API key if provided
     ctfd_api_key = None
     if data.ctfd_api_key:
@@ -426,6 +434,8 @@ async def update_event(
     if data.status is not None:
         event.status = EventStatus(data.status)
     if data.ctfd_url is not None:
+        if data.ctfd_url:
+            validate_public_url(data.ctfd_url)
         event.ctfd_url = data.ctfd_url
     if data.ctfd_api_key is not None:
         event.ctfd_api_key = encrypt_data(data.ctfd_api_key)
@@ -2389,24 +2399,35 @@ async def upload_certificate_template_image(
     
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
-    
-    # Validate file type
-    if not file.content_type.startswith("image/"):
-        raise HTTPException(
-            status_code=400, detail="File must be an image"
-        )
-    
-    # Save file
-    upload_dir = Path(settings.upload_dir) / "certificate-templates"
-    upload_dir.mkdir(parents=True, exist_ok=True)
-    
-    ext = file.filename.split(".")[-1] if "." in file.filename else "png"
-    filename = f"{template_id}.{ext}"
-    filepath = upload_dir / filename
-    
+
+    # Read the upload and enforce the configured size limit
     content = await file.read()
+    if len(content) > settings.max_upload_size_bytes:
+        raise HTTPException(status_code=413, detail="File too large")
+
+    # Validate that the bytes are a real raster image (rejects SVG,
+    # spoofed content-types, and non-image payloads used for stored XSS)
+    from io import BytesIO
+    from PIL import Image
+
+    try:
+        Image.open(BytesIO(content)).verify()
+    except Exception:
+        raise HTTPException(status_code=400, detail="File must be a valid image")
+
+    # Save file. NEVER derive the on-disk name from user input: the filename
+    # is forced from the (server-controlled) template UUID.
+    upload_dir = (Path(settings.upload_dir) / "certificate-templates").resolve()
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    filepath = (upload_dir / f"{template_id}.png").resolve()
+
+    # Defense in depth: ensure the resolved path stays inside the upload dir
+    if upload_dir != filepath.parent:
+        raise HTTPException(status_code=400, detail="Invalid file path")
+
     filepath.write_bytes(content)
-    
+
     # Update template
     template.template_file = str(filepath)
     await db.flush()
@@ -3116,8 +3137,9 @@ async def sync_ctfd(
             "stats": stats,
         }
         
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        logger.exception("CTFd sync failed for event %s", event_id)
+        raise HTTPException(status_code=500, detail="CTFd sync failed")
 
 
 @router.post("/events/{event_id}/ctfd/provision", response_model=BaseResponse)
@@ -3174,8 +3196,9 @@ async def provision_ctfd_users(
             message=f"Provisioned {provisioned} users to CTFd",
         )
         
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except Exception:
+        logger.exception("CTFd provisioning failed for event %s", event_id)
+        raise HTTPException(status_code=500, detail="CTFd provisioning failed")
 
 
 # =============================================================================

@@ -13,13 +13,15 @@ from pydantic import BaseModel, EmailStr
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_redis
+from app.api.deps import get_client_ip, get_redis
 from app.config import get_settings
 from app.database import get_session
 from app.models import Event, EventStatus, Participant, EmailProvider, User
 from app.schemas import EventListResponse, EventResponse
 from app.services.email import EmailMessage, EmailOrchestrator, render_email, render_subject
+from app.utils.ratelimit import rate_limit
 from app.utils.security import hash_password
+from app.utils.turnstile import verify_turnstile
 import secrets
 
 router = APIRouter()
@@ -170,6 +172,7 @@ class ParticipantRegistrationRequest(BaseModel):
     email: EmailStr
     team_name: Optional[str] = None
     team_password: Optional[str] = None
+    turnstile_token: Optional[str] = None
 
 
 class RegistrationResponse(BaseModel):
@@ -179,7 +182,11 @@ class RegistrationResponse(BaseModel):
     participant_id: Optional[UUID] = None
 
 
-@router.post("/{event_id}/register", response_model=RegistrationResponse)
+@router.post(
+    "/{event_id}/register",
+    response_model=RegistrationResponse,
+    dependencies=[Depends(rate_limit("events:register", (5, 60), (20, 3600)))],
+)
 async def register_for_event(
     event_id: UUID,
     data: ParticipantRegistrationRequest,
@@ -189,9 +196,12 @@ async def register_for_event(
 ):
     """
     Register a participant for an event.
-    
+
     This is the public registration endpoint.
     """
+    # Verify captcha (no-op unless Turnstile is configured)
+    await verify_turnstile(data.turnstile_token, get_client_ip(request))
+
     # Get event
     result = await db.execute(
         select(Event).where(Event.id == event_id)

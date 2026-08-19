@@ -49,6 +49,7 @@ from app.schemas import (
     VerifyEmailRequest,
 )
 from app.services.email import EmailMessage, EmailOrchestrator, render_email, render_subject
+from app.utils.ratelimit import rate_limit
 from app.utils.security import (
     generate_verification_token,
     hash_password,
@@ -56,6 +57,11 @@ from app.utils.security import (
     is_valid_username,
     verify_password,
 )
+from app.utils.turnstile import verify_turnstile
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 settings = get_settings()
@@ -66,18 +72,100 @@ settings = get_settings()
 # =============================================================================
 
 
-@router.post("/login", response_model=AuthResponse)
+async def _is_admin_login_locked(redis, user_id, ip: str) -> bool:
+    """
+    Return True if the given (admin user, IP) pair — or the IP as a whole — is
+    currently locked out from logging in.
+
+    The hard lock is keyed by (user_id, ip) so that an attacker from one IP can
+    never lock the real admin out globally; a separate, higher-threshold per-IP
+    counter blunts a single IP hammering many accounts.
+
+    Fails open (returns False) on any Redis error.
+    """
+    if redis is None:
+        return False
+    try:
+        if await redis.get(f"login_lock:user:{user_id}:ip:{ip}"):
+            return True
+        ip_count = await redis.get(f"login_fail:ip:{ip}")
+        if ip_count is not None:
+            try:
+                if int(ip_count) >= settings.max_login_attempts * 10:
+                    return True
+            except (TypeError, ValueError):
+                pass
+        return False
+    except Exception as exc:  # noqa: BLE001 - fail open on Redis error
+        logger.warning("Admin lockout check failed (fail-open): %s", exc)
+        return False
+
+
+async def _register_admin_login_failure(redis, user_id, ip: str) -> bool:
+    """
+    Record a failed admin login attempt for (user_id, ip).
+
+    Returns True only on the failure that *crosses* the lockout threshold, so the
+    caller writes exactly one ``account.locked`` audit record. Fails open
+    (returns False) on any Redis error.
+    """
+    if redis is None:
+        return False
+    try:
+        window = settings.lockout_duration_minutes * 60
+        user_key = f"login_fail:user:{user_id}:ip:{ip}"
+        user_count = await redis.incr(user_key)
+        if user_count == 1:
+            await redis.expire(user_key, window)
+
+        ip_key = f"login_fail:ip:{ip}"
+        ip_count = await redis.incr(ip_key)
+        if ip_count == 1:
+            await redis.expire(ip_key, window)
+
+        if user_count >= settings.max_login_attempts:
+            await redis.setex(f"login_lock:user:{user_id}:ip:{ip}", window, "1")
+            return user_count == settings.max_login_attempts
+        return False
+    except Exception as exc:  # noqa: BLE001 - fail open on Redis error
+        logger.warning("Admin login-failure tracking failed (fail-open): %s", exc)
+        return False
+
+
+async def _clear_admin_login_failures(redis, user_id, ip: str) -> None:
+    """Clear all admin lockout counters/flags for (user_id, ip) after success."""
+    if redis is None:
+        return
+    try:
+        await redis.delete(
+            f"login_lock:user:{user_id}:ip:{ip}",
+            f"login_fail:user:{user_id}:ip:{ip}",
+            f"login_fail:ip:{ip}",
+        )
+    except Exception as exc:  # noqa: BLE001 - fail open on Redis error
+        logger.warning("Clearing admin lockout counters failed: %s", exc)
+
+
+@router.post(
+    "/login",
+    response_model=AuthResponse,
+    dependencies=[Depends(rate_limit("auth:login", (10, 60)))],
+)
 async def login(
     request: Request,
     response: Response,
     data: LoginRequest,
     db: AsyncSession = Depends(get_session),
+    redis=Depends(get_redis),
 ):
     """
     Login for admin users and participants.
-    
+
     Determines account type by checking users table first, then participants.
     """
+    # Verify captcha (no-op unless Turnstile is configured)
+    await verify_turnstile(data.turnstile_token, get_client_ip(request))
+
     # Try to find admin user
     result = await db.execute(
         select(User).where(User.email == data.email.lower())
@@ -85,21 +173,55 @@ async def login(
     user = result.scalar_one_or_none()
     
     if user:
+        client_ip = get_client_ip(request) or "unknown"
+
+        # Enforce lockout before checking the password
+        if await _is_admin_login_locked(redis, user.id, client_ip):
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Account temporarily locked. Try again later.",
+            )
+
         # Verify password
         if not verify_password(data.password, user.password_hash):
+            # Track the failure; True only when this attempt crosses the threshold
+            just_locked = await _register_admin_login_failure(
+                redis, user.id, client_ip
+            )
+
             # Log failed attempt
             await _log_audit(
                 db,
                 action="account.login_failed",
                 user_id=user.id,
-                ip_address=get_client_ip(request),
+                ip_address=client_ip,
                 metadata={"reason": "invalid_password"},
             )
+
+            if just_locked:
+                lock_log = AuditLog(
+                    action="account.locked",
+                    user_id=user.id,
+                    actor_type="user",
+                    resource_type="user",
+                    resource_id=user.id,
+                    ip_address=client_ip,
+                    success=False,
+                    extra_data={
+                        "reason": "too_many_failed_attempts",
+                        "ip": client_ip,
+                        "threshold": settings.max_login_attempts,
+                        "lockout_minutes": settings.lockout_duration_minutes,
+                    },
+                )
+                db.add(lock_log)
+                await db.flush()
+
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid email or password",
             )
-        
+
         if not user.is_active:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -117,13 +239,16 @@ async def login(
         # Update last login
         user.last_login_at = datetime.now(timezone.utc)
         await db.flush()
-        
+
+        # Clear any lockout counters for this account/IP on success
+        await _clear_admin_login_failures(redis, user.id, client_ip)
+
         # Log success
         await _log_audit(
             db,
             action="account.login",
             user_id=user.id,
-            ip_address=get_client_ip(request),
+            ip_address=client_ip,
         )
         
         # Set cookie
@@ -293,7 +418,11 @@ async def get_me(
 # =============================================================================
 
 
-@router.post("/register", response_model=AuthResponse)
+@router.post(
+    "/register",
+    response_model=AuthResponse,
+    dependencies=[Depends(rate_limit("auth:register", (5, 60), (20, 3600)))],
+)
 async def register(
     request: Request,
     data: RegisterRequest,
@@ -302,7 +431,7 @@ async def register(
 ):
     """
     Register a new participant for an event.
-    
+
     Flow:
     1. Validate input
     2. Check event exists and registration is open
@@ -310,6 +439,9 @@ async def register(
     4. Send verification email
     5. Return success (user must verify email to continue)
     """
+    # Verify captcha (no-op unless Turnstile is configured)
+    await verify_turnstile(data.turnstile_token, get_client_ip(request))
+
     # Validate username
     if not is_valid_username(data.username):
         raise HTTPException(
@@ -520,7 +652,11 @@ async def verify_email(
     )
 
 
-@router.post("/resend-verification", response_model=BaseResponse)
+@router.post(
+    "/resend-verification",
+    response_model=BaseResponse,
+    dependencies=[Depends(rate_limit("auth:resend-verification", (3, 60), (10, 3600)))],
+)
 async def resend_verification(
     request: Request,
     data: ResendVerificationRequest,
@@ -693,6 +829,88 @@ async def _send_verification_email(
     await db.flush()
 
 
+async def _send_password_reset_email(
+    db: AsyncSession,
+    redis,
+    *,
+    to_email: str,
+    name: str,
+    reset_url: str,
+    event_name: Optional[str] = None,
+    participant_id=None,
+):
+    """Send a password reset email via the provider pool. No-op if none configured."""
+    from app.models import EmailProvider
+    from app.services.email.templates import DEFAULT_TEMPLATES
+
+    result = await db.execute(
+        select(EmailProvider).where(
+            EmailProvider.is_active == True
+        ).order_by(EmailProvider.priority)
+    )
+    providers = result.scalars().all()
+
+    if not providers:
+        print("Warning: No email providers configured")
+        return
+
+    provider_configs = [
+        {
+            "id": p.id,
+            "name": p.name,
+            "type": p.provider_type.value,
+            "config": p.config,
+            "priority": p.priority,
+            "daily_limit": p.daily_limit,
+            "hourly_limit": p.hourly_limit,
+            "minute_limit": p.minute_limit,
+            "second_limit": p.second_limit,
+        }
+        for p in providers
+    ]
+
+    template = DEFAULT_TEMPLATES["password_reset"]
+    variables = {
+        "name": name,
+        "reset_url": reset_url,
+        "event_name": event_name,
+    }
+
+    body_html, body_text = render_email(
+        template["body_html"],
+        variables,
+        template["body_text"],
+    )
+    subject = render_subject(template["subject"], variables)
+
+    message = EmailMessage(
+        to=to_email,
+        subject=subject,
+        body_html=body_html,
+        body_text=body_text,
+        participant_id=participant_id,
+        template_slug="password_reset",
+    )
+
+    orchestrator = EmailOrchestrator(redis)
+    result = await orchestrator.send(message, provider_configs)
+
+    email_log = EmailLog(
+        recipient_email=to_email,
+        participant_id=participant_id,
+        provider_id=result.provider_id,
+        provider_name=result.provider_name,
+        subject=subject,
+        template_slug="password_reset",
+        status=EmailStatus.SENT if result.success else EmailStatus.FAILED,
+        error_message=result.error,
+        attempts=result.attempts,
+        sent_at=datetime.now(timezone.utc) if result.success else None,
+    )
+    db.add(email_log)
+    await db.flush()
+
+
 class ForgotPasswordRequest(BaseModel):
     email: str
     event_slug: Optional[str] = None
@@ -703,7 +921,11 @@ class ResetPasswordRequest(BaseModel):
     password: str
 
 
-@router.post("/forgot-password", response_model=BaseResponse)
+@router.post(
+    "/forgot-password",
+    response_model=BaseResponse,
+    dependencies=[Depends(rate_limit("auth:forgot-password", (3, 60), (10, 3600)))],
+)
 async def forgot_password(
     data: ForgotPasswordRequest,
     request: Request,
@@ -730,32 +952,14 @@ async def forgot_password(
         # Build reset URL
         reset_url = f"{settings.app_url}/reset-password?token={token}"
         
-        # Send password reset email
-        from app.services.email.orchestrator import EmailOrchestrator
-        try:
-            orchestrator = EmailOrchestrator(redis)
-            await orchestrator.send_single(
-                to_email=user.email,
-                subject="Reset Your Password - ZeroPool",
-                html_body=f"""
-                <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
-                    <h2>Reset Your Password</h2>
-                    <p>Hi {user.username},</p>
-                    <p>You requested to reset your password. Click the button below to set a new password:</p>
-                    <p style="margin: 24px 0;">
-                        <a href="{reset_url}" style="background: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; display: inline-block;">Reset Password</a>
-                    </p>
-                    <p>This link will expire in 1 hour.</p>
-                    <p>If you didn't request this, you can safely ignore this email.</p>
-                    <hr style="margin: 24px 0; border: none; border-top: 1px solid #e5e7eb;">
-                    <p style="color: #6b7280; font-size: 12px;">ZeroPool - Event Management Platform</p>
-                </div>
-                """,
-                text_body=f"Reset your password: {reset_url}\n\nThis link expires in 1 hour.",
-            )
-        except Exception as e:
-            # Log error but don't reveal to user
-            pass
+        # Send password reset email via the provider pool
+        await _send_password_reset_email(
+            db,
+            redis,
+            to_email=user.email,
+            name=user.username,
+            reset_url=reset_url,
+        )
         
         # Log the request
         audit_log = AuditLog(
@@ -765,11 +969,11 @@ async def forgot_password(
             resource_type="user",
             resource_id=user.id,
             ip_address=get_client_ip(request),
-            metadata={"email": email},
+            extra_data={"email": email},
         )
         db.add(audit_log)
         await db.flush()
-        
+
         return BaseResponse(success=True, message="If an account exists, a reset link has been sent")
     
     # Check if it's a participant
@@ -794,9 +998,17 @@ async def forgot_password(
                     f"{participant.id}:{event.id}"
                 )
                 
-                reset_url = f"{settings.app_url}/events/{event.slug}/reset-password?token={token}"
-                
-                # TODO: Send password reset email to participant
+                reset_url = f"{settings.app_url}/reset-password?token={token}"
+
+                await _send_password_reset_email(
+                    db,
+                    redis,
+                    to_email=participant.email,
+                    name=participant.name or participant.username,
+                    reset_url=reset_url,
+                    event_name=event.name,
+                    participant_id=participant.id,
+                )
     
     return BaseResponse(success=True, message="If an account exists, a reset link has been sent")
 

@@ -241,19 +241,26 @@ async def require_verified_participant(
 
 
 def get_client_ip(request: Request) -> Optional[str]:
-    """Get client IP address from request."""
-    # Check for proxy headers
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    
+    """Get the real client IP address from request.
+
+    Behind our nginx (which sets X-Real-IP from Cloudflare's CF-Connecting-IP and
+    *appends* the real IP to X-Forwarded-For), the trustworthy value is X-Real-IP,
+    or the LAST token of X-Forwarded-For. The FIRST X-Forwarded-For token is
+    attacker-supplied and must never be trusted for rate-limiting / lockout keys.
+    """
+    # X-Real-IP is set by our own nginx from the Cloudflare-verified client IP.
     real_ip = request.headers.get("X-Real-IP")
     if real_ip:
-        return real_ip
-    
+        return real_ip.strip()
+
+    # Fall back to the last hop of X-Forwarded-For (appended by our proxy).
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[-1].strip()
+
     if request.client:
         return request.client.host
-    
+
     return None
 
 

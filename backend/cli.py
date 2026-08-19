@@ -10,15 +10,18 @@ Usage:
 
 import asyncio
 import sys
-from uuid import uuid4
+from datetime import datetime, timezone
+from uuid import UUID, uuid4
 
+from redis import asyncio as aioredis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
+from app.api.auth import _send_verification_email
 from app.config import get_settings
-from app.models import User, UserRole
-from app.utils.security import hash_password
+from app.models import Event, Participant, User, UserRole
+from app.utils.security import generate_verification_token, hash_password
 
 settings = get_settings()
 
@@ -115,21 +118,104 @@ async def reset_password(email: str, new_password: str):
         return True
 
 
+async def resend_verifications(event_ref: str, limit=None):
+    """Resend verification emails to unverified participants of an event."""
+    redis = aioredis.from_url(settings.redis_url, decode_responses=True)
+    try:
+        async with async_session() as db:
+            # Resolve event by UUID or slug
+            event = None
+            try:
+                event_id = UUID(event_ref)
+                result = await db.execute(select(Event).where(Event.id == event_id))
+                event = result.scalar_one_or_none()
+            except ValueError:
+                event = None
+            if event is None:
+                result = await db.execute(
+                    select(Event).where(Event.slug == event_ref.lower())
+                )
+                event = result.scalar_one_or_none()
+
+            if not event:
+                print(f"❌ Event '{event_ref}' not found")
+                return False
+
+            # Find unverified participants
+            query = (
+                select(Participant)
+                .where(
+                    Participant.event_id == event.id,
+                    Participant.email_verified == False,
+                )
+                .order_by(Participant.created_at)
+            )
+            if limit:
+                query = query.limit(limit)
+            result = await db.execute(query)
+            participants = result.scalars().all()
+
+            total = len(participants)
+            if total == 0:
+                print(f"No unverified participants for event '{event.slug}'")
+                return True
+
+            print(f"Found {total} unverified participant(s) for '{event.name}' ({event.slug})")
+
+            sent = 0
+            skipped = 0
+            failed = 0
+            for i, participant in enumerate(participants, 1):
+                # Skip anyone already verified (defensive)
+                if participant.email_verified:
+                    skipped += 1
+                    continue
+
+                # Reuse existing token or generate a fresh one
+                token = participant.email_verification_token or generate_verification_token()
+                participant.email_verification_token = token
+                # Always refresh sent-at so the token is treated as fresh
+                participant.email_verification_sent_at = datetime.now(timezone.utc)
+                verification_url = f"{settings.app_url}/verify?token={token}"
+
+                try:
+                    await _send_verification_email(db, redis, participant, event, verification_url)
+                    await db.commit()
+                    sent += 1
+                    print(f"  [{i}/{total}] ✅ {participant.email}  (sent={sent} failed={failed})")
+                except Exception as e:
+                    await db.rollback()
+                    failed += 1
+                    print(f"  [{i}/{total}] ❌ {participant.email}: {e}")
+
+                # Pace sends to respect provider limits
+                await asyncio.sleep(0.5)
+
+            print(f"\nDone. sent={sent} skipped={skipped} failed={failed} total={total}")
+            return True
+    finally:
+        await redis.close()
+
+
 def print_usage():
     print("""
 ZeroPool CLI - Admin Management
 
 Commands:
-    add-admin <email> <name> <password>  - Create a new admin
-    list-admins                          - List all admins
-    delete-admin <email>                 - Delete an admin
-    reset-password <email> <password>    - Reset admin password
+    add-admin <email> <name> <password>            - Create a new admin
+    list-admins                                    - List all admins
+    delete-admin <email>                           - Delete an admin
+    reset-password <email> <password>              - Reset admin password
+    resend-verifications <event_slug_or_id> [--limit N]
+                                                   - Resend verification emails to
+                                                     unverified participants of an event
 
 Examples:
     python cli.py add-admin admin@h7tex.com "John Doe" secretpass123
     python cli.py list-admins
     python cli.py delete-admin old@admin.com
     python cli.py reset-password admin@h7tex.com newpassword456
+    python cli.py resend-verifications h7ctf-2025 --limit 50
 """)
 
 
@@ -160,7 +246,26 @@ async def main():
             print("Usage: python cli.py reset-password <email> <password>")
             return
         await reset_password(sys.argv[2], sys.argv[3])
-    
+
+    elif command == "resend-verifications":
+        if len(sys.argv) < 3:
+            print("Usage: python cli.py resend-verifications <event_slug_or_id> [--limit N]")
+            return
+        event_ref = sys.argv[2]
+        limit = None
+        if "--limit" in sys.argv:
+            idx = sys.argv.index("--limit")
+            if idx + 1 < len(sys.argv):
+                try:
+                    limit = int(sys.argv[idx + 1])
+                except ValueError:
+                    print("❌ --limit must be an integer")
+                    return
+            else:
+                print("❌ --limit requires a value")
+                return
+        await resend_verifications(event_ref, limit)
+
     else:
         print(f"Unknown command: {command}")
         print_usage()
