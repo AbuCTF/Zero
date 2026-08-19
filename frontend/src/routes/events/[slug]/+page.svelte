@@ -70,7 +70,7 @@
             return { text: 'Registration closed', class: 'text-destructive' };
         }
 
-        if (event.status === 'completed' || event.status === 'finalized') {
+        if (event.status === 'ended' || event.status === 'archived') {
             return { text: 'Event ended', class: 'text-foreground-muted' };
         }
 
@@ -85,8 +85,8 @@
         if (!event) return '';
         if (event.status === 'live') return 'Live now';
         if (event.status === 'registration') return 'Registration open';
-        if (event.status === 'active') return 'Active';
-        if (event.status === 'completed' || event.status === 'finalized') return 'Ended';
+        if (event.status === 'ended') return 'Ended';
+        if (event.status === 'archived') return 'Archived';
         return '';
     }
 
@@ -168,8 +168,8 @@
                 {/if}
 
                 <div class="mt-6 flex items-center justify-center gap-2.5 text-xs font-mono">
-                    {#if event.start_date}
-                        <span class="text-foreground-muted">{formatDate(event.start_date)}</span>
+                    {#if event.event_start}
+                        <span class="text-foreground-muted">{formatDate(event.event_start)}</span>
                         <span class="w-1 h-1 rounded-full bg-border-hover flex-shrink-0" aria-hidden="true" />
                     {/if}
                     <span class={getRegistrationStatus().class}>

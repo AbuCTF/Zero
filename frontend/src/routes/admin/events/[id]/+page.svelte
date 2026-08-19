@@ -2,12 +2,13 @@
     import { onMount } from 'svelte';
     import { page } from '$app/stores';
     import { goto } from '$app/navigation';
-    import { api, type Event, type Participant } from '$lib/api';
+    import { api, type Event, type Participant, type EventStats } from '$lib/api';
     import { formatDate, formatNumber } from '$lib/utils';
 
     const eventId = $derived($page.params.id);
-    
+
     let event = $state<Event | null>(null);
+    let eventStats = $state<EventStats | null>(null);
     let participants = $state<Participant[]>([]);
     let totalParticipants = $state(0);
     let totalVerified = $state(0);
@@ -19,6 +20,7 @@
     let activeTab = $state<'overview' | 'participants' | 'prizes' | 'settings'>('overview');
     
     let provisioning = $state(false);
+    let syncing = $state(false);
     let finalizing = $state(false);
     let saving = $state(false);
     let provisionResult = $state<{ message: string; stats?: any } | null>(null);
@@ -114,22 +116,23 @@
         try {
             event = await api.admin.events.get(eventId);
             await loadParticipants(1);
-            
+            await loadStats();
+
             // Populate edit form
             editForm = {
                 name: event.name,
                 slug: event.slug,
                 description: event.description || '',
-                start_date: event.start_date?.slice(0, 16) || '',
-                end_date: event.end_date?.slice(0, 16) || '',
+                start_date: event.event_start?.slice(0, 16) || '',
+                end_date: event.event_end?.slice(0, 16) || '',
                 registration_open: event.registration_start?.slice(0, 16) || '',
                 registration_close: event.registration_end?.slice(0, 16) || '',
-                max_participants: event.max_participants,
-                team_mode: event.team_mode,
+                max_participants: event.max_participants ?? null,
+                team_mode: event.team_mode ?? false,
                 min_team_size: event.min_team_size || 1,
                 max_team_size: event.max_team_size || 4,
                 ctfd_url: event.ctfd_url || '',
-                ctfd_api_key: event.ctfd_api_key || '',
+                ctfd_api_key: '',
                 discord_url: event.settings?.discord_url || '',
                 site_url: event.settings?.site_url || ''
             };
@@ -148,9 +151,18 @@
             currentPage = response.page || 1;
             totalPages = response.pages || 1;
             // Calculate verified count from event stats or estimate
-            totalVerified = event?.stats?.verified_count || participants.filter(p => p.email_verified).length;
+            totalVerified = event?.verified_count || participants.filter(p => p.email_verified).length;
         } catch (e: any) {
             error = e.message || 'Failed to load participants';
+        }
+    }
+
+    async function loadStats() {
+        try {
+            eventStats = await api.admin.events.stats(eventId);
+        } catch (e) {
+            // Stats are non-critical for rendering the page
+            console.error('Failed to load event stats', e);
         }
     }
 
@@ -167,7 +179,23 @@
         saving = true;
         error = '';
         try {
-            await api.admin.events.update(eventId, editForm);
+            // Sanitize: empty datetime-local inputs bind to '' which the backend
+            // rejects (422); send null instead so the field is treated as unset.
+            const payload: any = {
+                ...editForm,
+                registration_open: editForm.registration_open || null,
+                registration_close: editForm.registration_close || null,
+                start_date: editForm.start_date || null,
+                end_date: editForm.end_date || null,
+                max_participants: editForm.max_participants || null
+            };
+            // The API key is never returned by the backend, so the field is blank
+            // unless the admin typed a new one. Don't send a blank value or we'd
+            // overwrite the stored key with an empty string.
+            if (!editForm.ctfd_api_key) {
+                delete payload.ctfd_api_key;
+            }
+            await api.admin.events.update(eventId, payload);
             await loadEvent();
         } catch (e: any) {
             error = e.message || 'Failed to save settings';
@@ -195,6 +223,28 @@
             error = e.message || 'Failed to provision to CTFd';
         } finally {
             provisioning = false;
+        }
+    }
+
+    async function syncFromCtfd() {
+        if (!event?.ctfd_url) {
+            error = 'Please configure CTFd URL first';
+            return;
+        }
+
+        if (!confirm('Sync scoreboard results from CTFd? This will update participant ranks and scores.')) return;
+
+        syncing = true;
+        error = '';
+        provisionResult = null;
+        try {
+            const result = await api.admin.events.syncCTFd(eventId);
+            provisionResult = result;
+            await loadEvent();
+        } catch (e: any) {
+            error = e.message || 'Failed to sync from CTFd';
+        } finally {
+            syncing = false;
         }
     }
 
@@ -364,9 +414,9 @@
         switch (status) {
             case 'draft': return 'badge-secondary';
             case 'registration': return 'badge-primary';
-            case 'active': return 'badge-success';
-            case 'completed': return 'badge-warning';
-            case 'finalized': return 'badge-secondary';
+            case 'live': return 'badge-success';
+            case 'ended': return 'badge-warning';
+            case 'archived': return 'badge-secondary';
             default: return 'badge-secondary';
         }
     }
@@ -537,8 +587,8 @@
                 </p>
             </div>
             <div class="flex items-center gap-2">
-                {#if event.ctfd_url && ['draft', 'registration', 'active'].includes(event.status)}
-                    <button 
+                {#if event.ctfd_url && ['draft', 'registration', 'live'].includes(event.status)}
+                    <button
                         onclick={provisionToCtfd}
                         disabled={provisioning}
                         class="btn btn-secondary"
@@ -547,7 +597,17 @@
                         {provisioning ? 'Provisioning...' : 'Provision to CTFd'}
                     </button>
                 {/if}
-                {#if event.status === 'completed'}
+                {#if event.ctfd_url}
+                    <button
+                        onclick={syncFromCtfd}
+                        disabled={syncing}
+                        class="btn btn-secondary"
+                        title="Pull scoreboard results (ranks and scores) from CTFd"
+                    >
+                        {syncing ? 'Syncing...' : 'Sync from CTFd'}
+                    </button>
+                {/if}
+                {#if event.status === 'ended'}
                     <button 
                         onclick={finalizeEvent}
                         disabled={finalizing}
@@ -638,7 +698,7 @@
                         <div>
                             <div class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Verified</div>
                             <div class="text-2xl font-semibold mt-1 tracking-tight">
-                                {formatNumber(event?.stats?.verified_count || 0)}
+                                {formatNumber(event?.verified_count || 0)}
                             </div>
                         </div>
                         <div class="w-10 h-10 rounded-lg bg-success/10 flex items-center justify-center text-success">
@@ -651,7 +711,7 @@
                         <div>
                             <div class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Teams</div>
                             <div class="text-2xl font-semibold mt-1 tracking-tight">
-                                {formatNumber(new Set(participants.filter(p => p.team_id).map(p => p.team_id)).size)}
+                                {formatNumber(eventStats?.team_count ?? 0)}
                             </div>
                         </div>
                         <div class="w-10 h-10 rounded-lg bg-accent/50 flex items-center justify-center text-muted-foreground group-hover:bg-accent transition-colors">
@@ -691,11 +751,11 @@
                         </div>
                         <div class="flex justify-between items-center py-2 border-b border-border/50">
                             <span class="text-muted-foreground">Event Starts</span>
-                            <span class="font-medium">{event.start_date ? formatDate(event.start_date) : '—'}</span>
+                            <span class="font-medium">{event.event_start ? formatDate(event.event_start) : '—'}</span>
                         </div>
                         <div class="flex justify-between items-center py-2">
                             <span class="text-muted-foreground">Event Ends</span>
-                            <span class="font-medium">{event.end_date ? formatDate(event.end_date) : '—'}</span>
+                            <span class="font-medium">{event.event_end ? formatDate(event.event_end) : '—'}</span>
                         </div>
                     </div>
                 </div>
@@ -715,7 +775,7 @@
                             </div>
                             <div class="flex justify-between items-center py-2">
                                 <span class="text-muted-foreground">Last Sync</span>
-                                <span class="font-medium">{event.ctfd_last_sync ? formatDate(event.ctfd_last_sync) : 'Never'}</span>
+                                <span class="font-medium">{event.ctfd_synced_at ? formatDate(event.ctfd_synced_at) : 'Never'}</span>
                             </div>
                         </div>
                     {:else}
@@ -797,7 +857,7 @@
                                         {participant.email}
                                     </td>
                                     <td class="px-4 py-3 text-sm">
-                                        {participant.team_name || '-'}
+                                        {participant.extra_data?.team_name || '-'}
                                     </td>
                                     <td class="px-4 py-3 text-sm">
                                         {participant.final_rank || '-'}
@@ -998,7 +1058,7 @@
                                                 {/if}
                                             </td>
                                             <td class="px-4 py-3 text-sm text-muted-foreground">
-                                                {participant.prizes?.length ? `${participant.prizes.length} prize(s)` : 'None'}
+                                                —
                                             </td>
                                             <td class="px-4 py-3 text-right">
                                                 <button onclick={() => openAssignModal(participant)} class="btn btn-ghost btn-sm">

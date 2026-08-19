@@ -67,7 +67,7 @@
 					<option value="draft">Draft</option>
 					<option value="registration">Registration</option>
 					<option value="live">Live</option>
-					<option value="completed">Completed</option>
+					<option value="ended">Ended</option>
 					<option value="archived">Archived</option>
 				</select>
 			</div>

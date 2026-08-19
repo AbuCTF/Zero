@@ -33,6 +33,7 @@ from app.config import get_settings
 from app.database import get_session
 from app.models import (
     AuditLog,
+    CampaignStatus,
     Certificate,
     CertificateTemplate,
     EmailCampaign,
@@ -89,7 +90,7 @@ from app.schemas import (
 )
 from app.services.email import EmailMessage, EmailOrchestrator
 from app.utils.net import validate_public_url
-from app.utils.security import encrypt_data, hash_password
+from app.utils.security import decrypt_data, encrypt_data, hash_password
 
 logger = logging.getLogger(__name__)
 
@@ -427,17 +428,21 @@ async def update_event(
     reg_end = data.get_registration_end()
     if reg_end is not None:
         event.registration_end = reg_end
-    if data.event_start is not None:
-        event.event_start = data.event_start
-    if data.event_end is not None:
-        event.event_end = data.event_end
+    event_start = data.get_event_start()
+    if event_start is not None:
+        event.event_start = event_start
+    event_end = data.get_event_end()
+    if event_end is not None:
+        event.event_end = event_end
     if data.status is not None:
         event.status = EventStatus(data.status)
     if data.ctfd_url is not None:
         if data.ctfd_url:
             validate_public_url(data.ctfd_url)
         event.ctfd_url = data.ctfd_url
-    if data.ctfd_api_key is not None:
+    # Empty string means "leave the stored key unchanged" (the form never
+    # receives the current key back, so it submits "" on every save).
+    if data.ctfd_api_key:
         event.ctfd_api_key = encrypt_data(data.ctfd_api_key)
     
     # Merge settings from both dict and top-level fields
@@ -902,12 +907,24 @@ async def generate_certificates_for_event(
     
     # Queue background task to render certificates
     try:
-        redis = await get_redis()
-        await redis.enqueue_job(
+        from arq import create_pool
+        from arq.connections import RedisSettings
+        from urllib.parse import urlparse
+
+        parsed = urlparse(settings.redis_url)
+        redis_settings = RedisSettings(
+            host=parsed.hostname or "localhost",
+            port=parsed.port or 6379,
+            password=parsed.password,
+            database=int((parsed.path or "/0").lstrip("/") or 0),
+        )
+        pool = await create_pool(redis_settings)
+        await pool.enqueue_job(
             "bulk_generate_certificates_task",
             str(event_id),
             "png",
         )
+        await pool.close()
     except Exception as e:
         # Don't fail if redis isn't available
         pass
@@ -1050,7 +1067,7 @@ async def import_participants(
             resource_type="event",
             resource_id=event_id,
             ip_address=get_client_ip(request),
-            metadata={
+            extra_data={
                 "job_id": job_id,
                 "total_participants": len(participants_data),
                 "source_file": file.filename,
@@ -1217,7 +1234,7 @@ async def import_participants(
         resource_type="event",
         resource_id=event_id,
         ip_address=get_client_ip(request),
-        metadata={
+        extra_data={
             "imported": imported,
             "updated": updated,
             "skipped": skipped,
@@ -1474,7 +1491,7 @@ async def import_results_csv(
         resource_type="event",
         resource_id=event_id,
         ip_address=get_client_ip(request) if request else None,
-        metadata={"updated": updated, "not_found": not_found, "skipped": skipped},
+        extra_data={"updated": updated, "not_found": not_found, "skipped": skipped},
     )
     db.add(audit_log)
     
@@ -1761,12 +1778,19 @@ async def test_provider(
     if not provider:
         raise HTTPException(status_code=404, detail="Provider not found")
     
-    # Prepare provider config
+    # Prepare provider config (credentials are stored encrypted; decrypt for use)
+    cfg = dict(provider.config or {})
+    for field in ("password", "api_key", "smtp_password"):
+        if cfg.get(field):
+            try:
+                cfg[field] = decrypt_data(cfg[field])
+            except Exception:
+                pass
     provider_config = {
         "id": provider.id,
         "name": provider.name,
         "type": provider.provider_type.value,
-        "config": provider.config,
+        "config": cfg,
         "priority": 1,
         "daily_limit": 1000,  # Ignore limits for test
         "hourly_limit": 100,
@@ -2644,14 +2668,13 @@ async def list_prize_rules(
                 event_id=r.event_id,
                 name=r.name,
                 description=r.description,
-                rank_min=r.rank_min,
-                rank_max=r.rank_max,
-                prize_type=r.prize_type,
-                prize_value=r.prize_value,
+                rank_from=r.rank_from,
+                rank_to=r.rank_to,
                 voucher_pool_id=r.voucher_pool_id,
-                voucher_pool_name=pool_name,
+                certificate_template_id=r.certificate_template_id,
+                custom_prize=r.custom_prize,
+                priority=r.priority,
                 is_active=r.is_active,
-                created_at=r.created_at,
             )
         )
     
@@ -2685,29 +2708,29 @@ async def create_prize_rule(
         event_id=event_id,
         name=data.name,
         description=data.description,
-        rank_min=data.rank_min,
-        rank_max=data.rank_max,
-        prize_type=data.prize_type,
-        prize_value=data.prize_value,
+        rank_from=data.rank_from,
+        rank_to=data.rank_to,
         voucher_pool_id=data.voucher_pool_id,
+        certificate_template_id=data.certificate_template_id,
+        custom_prize=data.custom_prize,
+        priority=data.priority,
     )
-    
+
     db.add(rule)
     await db.flush()
-    
+
     return PrizeRuleResponse(
         id=rule.id,
         event_id=rule.event_id,
         name=rule.name,
         description=rule.description,
-        rank_min=rule.rank_min,
-        rank_max=rule.rank_max,
-        prize_type=rule.prize_type,
-        prize_value=rule.prize_value,
+        rank_from=rule.rank_from,
+        rank_to=rule.rank_to,
         voucher_pool_id=rule.voucher_pool_id,
-        voucher_pool_name=pool_name,
+        certificate_template_id=rule.certificate_template_id,
+        custom_prize=rule.custom_prize,
+        priority=rule.priority,
         is_active=rule.is_active,
-        created_at=rule.created_at,
     )
 
 
@@ -2728,13 +2751,72 @@ async def delete_prize_rule(
     
     await db.delete(rule)
     await db.flush()
-    
+
     return BaseResponse(success=True, message="Prize rule deleted")
+
+
+@router.post("/events/{event_id}/prizes", response_model=BaseResponse)
+async def assign_prize(
+    event_id: UUID,
+    data: dict,
+    user: User = Depends(require_organizer),
+    db: AsyncSession = Depends(get_session),
+):
+    """Manually assign a prize to a participant."""
+    try:
+        participant_id = UUID(str(data["participant_id"]))
+    except (KeyError, ValueError):
+        raise HTTPException(status_code=400, detail="participant_id is required")
+
+    result = await db.execute(
+        select(Participant).where(
+            Participant.id == participant_id,
+            Participant.event_id == event_id,
+        )
+    )
+    participant = result.scalar_one_or_none()
+    if not participant:
+        raise HTTPException(status_code=404, detail="Participant not found")
+
+    prize_data = data.get("prize_data")
+    if not prize_data and data.get("certificate_template_id"):
+        prize_data = {"certificate_template_id": str(data["certificate_template_id"])}
+
+    prize = Prize(
+        participant_id=participant_id,
+        prize_type=data.get("prize_type", "custom"),
+        prize_data=prize_data or {},
+        assigned_manually=bool(data.get("assigned_manually", True)),
+    )
+    db.add(prize)
+    await db.flush()
+
+    return BaseResponse(success=True, message="Prize assigned")
 
 
 # =============================================================================
 # Campaign Management
 # =============================================================================
+
+
+def _campaign_response(c: EmailCampaign) -> CampaignResponse:
+    """Build a CampaignResponse from an EmailCampaign model."""
+    return CampaignResponse(
+        id=c.id,
+        event_id=c.event_id,
+        name=c.name,
+        subject=c.subject,
+        target_group=c.target_group,
+        target_config=c.target_config or {},
+        status=c.status.value,
+        scheduled_at=c.scheduled_for,
+        started_at=c.started_at,
+        completed_at=c.completed_at,
+        total_recipients=c.total_recipients,
+        sent_count=c.sent_count,
+        failed_count=c.failed_count,
+        created_at=c.created_at,
+    )
 
 
 @router.get("/campaigns", response_model=List[CampaignResponse])
@@ -2745,33 +2827,16 @@ async def list_campaigns(
 ):
     """List email campaigns."""
     query = select(EmailCampaign)
-    
+
     if event_id:
         query = query.where(EmailCampaign.event_id == event_id)
-    
+
     query = query.order_by(EmailCampaign.created_at.desc())
-    
+
     result = await db.execute(query)
     campaigns = result.scalars().all()
-    
-    return [
-        CampaignResponse(
-            id=c.id,
-            event_id=c.event_id,
-            template_id=c.template_id,
-            name=c.name,
-            status=c.status.value,
-            filter_criteria=c.filter_criteria,
-            total_recipients=c.total_recipients,
-            sent_count=c.sent_count,
-            failed_count=c.failed_count,
-            scheduled_at=c.scheduled_at,
-            started_at=c.started_at,
-            completed_at=c.completed_at,
-            created_at=c.created_at,
-        )
-        for c in campaigns
-    ]
+
+    return [_campaign_response(c) for c in campaigns]
 
 
 @router.post("/campaigns", response_model=CampaignResponse)
@@ -2782,46 +2847,38 @@ async def create_campaign(
 ):
     """Create an email campaign."""
     # Validate event
-    if data.event_id:
-        result = await db.execute(
-            select(Event).where(Event.id == data.event_id)
-        )
-        if not result.scalar_one_or_none():
-            raise HTTPException(status_code=404, detail="Event not found")
-    
-    # Validate template
+    result = await db.execute(
+        select(Event).where(Event.id == data.event_id)
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    # Look up the template and copy its content onto the campaign
     result = await db.execute(
         select(EmailTemplate).where(EmailTemplate.id == data.template_id)
     )
-    if not result.scalar_one_or_none():
+    template = result.scalar_one_or_none()
+    if not template:
         raise HTTPException(status_code=404, detail="Template not found")
-    
+
+    recipient_filter = data.recipient_filter or {}
+
     campaign = EmailCampaign(
         event_id=data.event_id,
-        template_id=data.template_id,
         name=data.name,
-        filter_criteria=data.filter_criteria or {},
-        scheduled_at=data.scheduled_at,
+        subject=template.subject,
+        body_html=template.body_html,
+        body_text=template.body_text,
+        target_group=recipient_filter.get("type", "all"),
+        target_config=recipient_filter,
+        scheduled_for=data.scheduled_at,
+        created_by=user.id,
     )
-    
+
     db.add(campaign)
     await db.flush()
-    
-    return CampaignResponse(
-        id=campaign.id,
-        event_id=campaign.event_id,
-        template_id=campaign.template_id,
-        name=campaign.name,
-        status=campaign.status.value,
-        filter_criteria=campaign.filter_criteria,
-        total_recipients=campaign.total_recipients,
-        sent_count=campaign.sent_count,
-        failed_count=campaign.failed_count,
-        scheduled_at=campaign.scheduled_at,
-        started_at=campaign.started_at,
-        completed_at=campaign.completed_at,
-        created_at=campaign.created_at,
-    )
+
+    return _campaign_response(campaign)
 
 
 @router.post("/campaigns/{campaign_id}/start", response_model=BaseResponse)
@@ -2843,30 +2900,31 @@ async def start_campaign(
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
     
-    if campaign.status != EmailStatus.DRAFT:
+    if campaign.status != CampaignStatus.DRAFT:
         raise HTTPException(
             status_code=400,
             detail=f"Campaign is already {campaign.status.value}",
         )
-    
+
     # Count recipients
     query = select(func.count()).select_from(Participant)
-    
+
     if campaign.event_id:
         query = query.where(Participant.event_id == campaign.event_id)
-    
-    criteria = campaign.filter_criteria
-    if criteria.get("verified_only"):
+
+    criteria = campaign.target_config or {}
+    if criteria.get("type") == "verified":
         query = query.where(Participant.email_verified == True)
-    if criteria.get("unverified_only"):
+    if criteria.get("type") == "unverified":
         query = query.where(Participant.email_verified == False)
-    
+
     total = await db.scalar(query) or 0
-    
+
     campaign.total_recipients = total
-    campaign.status = EmailStatus.PENDING
-    campaign.started_at = datetime.utcnow()
-    
+    # Move to SCHEDULED so the process_pending_campaigns cron picks it up.
+    campaign.status = CampaignStatus.SCHEDULED
+    campaign.scheduled_for = campaign.scheduled_for or datetime.utcnow()
+
     await db.flush()
     
     return BaseResponse(
@@ -2890,18 +2948,39 @@ async def cancel_campaign(
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
     
-    if campaign.status not in [EmailStatus.PENDING, EmailStatus.PROCESSING]:
+    if campaign.status not in (CampaignStatus.SCHEDULED, CampaignStatus.SENDING):
         raise HTTPException(
             status_code=400,
             detail=f"Cannot cancel campaign with status {campaign.status.value}",
         )
-    
-    campaign.status = EmailStatus.FAILED
+
+    campaign.status = CampaignStatus.CANCELLED
     campaign.completed_at = datetime.utcnow()
-    
+
     await db.flush()
-    
+
     return BaseResponse(success=True, message="Campaign cancelled")
+
+
+@router.delete("/campaigns/{campaign_id}", response_model=BaseResponse)
+async def delete_campaign(
+    campaign_id: UUID,
+    user: User = Depends(require_organizer),
+    db: AsyncSession = Depends(get_session),
+):
+    """Delete an email campaign."""
+    result = await db.execute(
+        select(EmailCampaign).where(EmailCampaign.id == campaign_id)
+    )
+    campaign = result.scalar_one_or_none()
+
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    await db.delete(campaign)
+    await db.flush()
+
+    return BaseResponse(success=True, message="Campaign deleted")
 
 
 # =============================================================================
@@ -2934,7 +3013,7 @@ async def finalize_event(
     result = await db.execute(
         select(PrizeRule)
         .where(PrizeRule.event_id == event_id, PrizeRule.is_active == True)
-        .order_by(PrizeRule.rank_min)
+        .order_by(PrizeRule.rank_from)
     )
     rules = result.scalars().all()
     
@@ -2965,17 +3044,17 @@ async def finalize_event(
         
         # Find matching prize rules
         for rule in rules:
-            if rule.rank_min <= rank <= (rule.rank_max or rank):
+            if rule.rank_from <= rank <= (rule.rank_to or rank):
                 # Check if prize already assigned
                 result = await db.execute(
                     select(Prize).where(
                         Prize.participant_id == participant.id,
-                        Prize.prize_rule_id == rule.id,
+                        Prize.rule_id == rule.id,
                     )
                 )
                 if result.scalar_one_or_none():
                     continue
-                
+
                 # Get voucher if needed
                 voucher_id = None
                 if rule.voucher_pool_id:
@@ -2987,16 +3066,32 @@ async def finalize_event(
                     )
                     voucher = result.scalar_one_or_none()
                     if voucher:
-                        voucher.status = VoucherStatus.RESERVED
+                        # No RESERVED state exists; mark claimed on assignment.
+                        voucher.status = VoucherStatus.CLAIMED
                         voucher_id = voucher.id
-                
+
+                # Build prize type/data from the rule shape
+                if rule.voucher_pool_id and voucher_id:
+                    p_type = "voucher"
+                    p_data = {
+                        "voucher_id": str(voucher_id),
+                        "pool_id": str(rule.voucher_pool_id),
+                    }
+                elif rule.certificate_template_id:
+                    p_type = "certificate"
+                    p_data = {
+                        "certificate_template_id": str(rule.certificate_template_id),
+                    }
+                else:
+                    p_type = "custom"
+                    p_data = rule.custom_prize or {}
+
                 # Create prize
                 prize = Prize(
                     participant_id=participant.id,
-                    prize_rule_id=rule.id,
-                    voucher_id=voucher_id,
-                    prize_type=rule.prize_type,
-                    prize_value=rule.prize_value,
+                    rule_id=rule.id,
+                    prize_type=p_type,
+                    prize_data=p_data,
                 )
                 db.add(prize)
                 prizes_assigned += 1
@@ -3028,8 +3123,8 @@ async def finalize_event(
             db.add(cert)
             certs_created += 1
     
-    event.status = EventStatus.COMPLETED
-    
+    event.status = EventStatus.ENDED
+
     # Audit log
     audit_log = AuditLog(
         action="admin.event_finalize",
@@ -3038,7 +3133,7 @@ async def finalize_event(
         resource_type="event",
         resource_id=event_id,
         ip_address=get_client_ip(request),
-        metadata={
+        extra_data={
             "prizes_assigned": prizes_assigned,
             "certificates_created": certs_created,
         },
@@ -3125,7 +3220,7 @@ async def sync_ctfd(
             resource_type="event",
             resource_id=event_id,
             ip_address=get_client_ip(request),
-            metadata=stats,
+            extra_data=stats,
         )
         db.add(audit_log)
         
@@ -3185,7 +3280,7 @@ async def provision_ctfd_users(
             resource_type="event",
             resource_id=event_id,
             ip_address=get_client_ip(request),
-            metadata={"provisioned": provisioned},
+            extra_data={"provisioned": provisioned},
         )
         db.add(audit_log)
         

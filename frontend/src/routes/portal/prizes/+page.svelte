@@ -45,7 +45,7 @@
         switch (status) {
             case 'pending': return { class: 'badge-warning', text: 'Ready to Claim' };
             case 'claimed': return { class: 'badge-success', text: 'Claimed' };
-            case 'delivered': return { class: 'badge-secondary', text: 'Delivered' };
+            case 'expired': return { class: 'badge-secondary', text: 'Expired' };
             default: return { class: 'badge-secondary', text: status };
         }
     }

@@ -212,6 +212,8 @@ class EventUpdate(BaseModel):
     registration_close: Optional[datetime] = None  # Alias for registration_end
     event_start: Optional[datetime] = None
     event_end: Optional[datetime] = None
+    start_date: Optional[datetime] = None  # Alias for event_start
+    end_date: Optional[datetime] = None    # Alias for event_end
     status: Optional[str] = None
     ctfd_url: Optional[str] = None
     ctfd_api_key: Optional[str] = None
@@ -226,11 +228,33 @@ class EventUpdate(BaseModel):
     discord_url: Optional[str] = None
     site_url: Optional[str] = None
 
+    @field_validator(
+        "registration_start",
+        "registration_end",
+        "registration_open",
+        "registration_close",
+        "event_start",
+        "event_end",
+        "start_date",
+        "end_date",
+        mode="before",
+    )
+    @classmethod
+    def _empty_str_to_none(cls, v):
+        """Frontend sends empty datetime-local inputs as ""; treat as None."""
+        return None if v == "" else v
+
     def get_registration_start(self) -> Optional[datetime]:
         return self.registration_start or self.registration_open
 
     def get_registration_end(self) -> Optional[datetime]:
         return self.registration_end or self.registration_close
+
+    def get_event_start(self) -> Optional[datetime]:
+        return self.event_start or self.start_date
+
+    def get_event_end(self) -> Optional[datetime]:
+        return self.event_end or self.end_date
 
 
 class EventResponse(BaseModel):
@@ -640,13 +664,11 @@ class CertificateVerifyResponse(BaseModel):
 
 class CampaignCreate(BaseModel):
     """Create email campaign."""
+    event_id: UUID
+    template_id: UUID
     name: str = Field(..., max_length=255)
-    subject: str = Field(..., max_length=500)
-    body_html: str
-    body_text: Optional[str] = None
-    target_group: str  # 'all', 'verified', 'top_n', 'rank_range', 'custom'
-    target_config: Dict[str, Any] = {}
-    scheduled_for: Optional[datetime] = None
+    recipient_filter: Dict[str, Any] = {}  # e.g. {"type": "verified"}
+    scheduled_at: Optional[datetime] = None
 
 
 class CampaignResponse(BaseModel):
@@ -660,7 +682,7 @@ class CampaignResponse(BaseModel):
     target_group: str
     target_config: Dict[str, Any]
     status: str
-    scheduled_for: Optional[datetime]
+    scheduled_at: Optional[datetime] = None
     started_at: Optional[datetime]
     completed_at: Optional[datetime]
     total_recipients: int

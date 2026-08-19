@@ -32,9 +32,8 @@
         draft: 'badge-secondary',
         scheduled: 'badge-warning',
         sending: 'badge-primary',
-        completed: 'badge-success',
-        paused: 'badge-secondary',
-        failed: 'badge-destructive'
+        sent: 'badge-success',
+        cancelled: 'badge-secondary'
     };
 
     onMount(async () => {
@@ -117,15 +116,6 @@
         }
     }
 
-    async function pauseCampaign(id: string) {
-        try {
-            await api.admin.campaigns.pause(id);
-            await loadCampaigns();
-        } catch (e: any) {
-            error = e.message || 'Failed to pause campaign';
-        }
-    }
-
     async function deleteCampaign(id: string) {
         if (!confirm('Are you sure you want to delete this campaign?')) return;
         
@@ -139,10 +129,6 @@
 
     function getEventName(eventId: string): string {
         return events.find(e => e.id === eventId)?.name || 'Unknown Event';
-    }
-
-    function getTemplateName(templateId: string): string {
-        return templates.find(t => t.id === templateId)?.name || 'Unknown Template';
     }
 
     function getProgress(campaign: EmailCampaign): number {
@@ -200,32 +186,16 @@
                             </div>
                             <div class="text-sm text-muted-foreground mt-1 space-x-4">
                                 <span>Event: {getEventName(campaign.event_id)}</span>
-                                <span>Template: {getTemplateName(campaign.template_id)}</span>
+                                <span>Subject: {campaign.subject}</span>
                             </div>
                         </div>
                         <div class="flex items-center gap-2">
                             {#if campaign.status === 'draft' || campaign.status === 'scheduled'}
-                                <button 
+                                <button
                                     onclick={() => startCampaign(campaign.id)}
                                     class="btn btn-primary btn-sm"
                                 >
                                     Start
-                                </button>
-                            {/if}
-                            {#if campaign.status === 'sending'}
-                                <button 
-                                    onclick={() => pauseCampaign(campaign.id)}
-                                    class="btn btn-secondary btn-sm"
-                                >
-                                    Pause
-                                </button>
-                            {/if}
-                            {#if campaign.status === 'paused'}
-                                <button 
-                                    onclick={() => startCampaign(campaign.id)}
-                                    class="btn btn-primary btn-sm"
-                                >
-                                    Resume
                                 </button>
                             {/if}
                             {#if campaign.status === 'draft'}
@@ -239,7 +209,7 @@
                         </div>
                     </div>
 
-                    {#if campaign.status === 'sending' || campaign.status === 'completed'}
+                    {#if campaign.status === 'sending' || campaign.status === 'sent'}
                         <div class="space-y-2">
                             <div class="flex justify-between text-sm">
                                 <span class="text-muted-foreground">Progress</span>

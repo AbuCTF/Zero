@@ -4,6 +4,7 @@ Prizes API Routes
 Endpoints for viewing and claiming prizes.
 """
 
+import uuid
 from datetime import datetime
 from typing import List
 
@@ -63,9 +64,17 @@ async def get_prize(
     db: AsyncSession = Depends(get_session),
 ):
     """Get a specific prize."""
+    try:
+        prize_uuid = uuid.UUID(prize_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid prize ID",
+        )
+
     result = await db.execute(
         select(Prize).where(
-            Prize.id == prize_id,
+            Prize.id == prize_uuid,
             Prize.participant_id == participant.id,
         )
     )
@@ -100,9 +109,17 @@ async def claim_prize(
     For voucher prizes, this reveals the voucher code.
     For certificate prizes, this triggers certificate generation.
     """
+    try:
+        prize_uuid = uuid.UUID(prize_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid prize ID",
+        )
+
     result = await db.execute(
         select(Prize).where(
-            Prize.id == prize_id,
+            Prize.id == prize_uuid,
             Prize.participant_id == participant.id,
         )
     )
@@ -167,7 +184,7 @@ async def claim_prize(
         resource_type="prize",
         resource_id=prize.id,
         ip_address=get_client_ip(request),
-        metadata={"prize_type": prize.prize_type},
+        extra_data={"prize_type": prize.prize_type},
     )
     db.add(audit_log)
     await db.flush()

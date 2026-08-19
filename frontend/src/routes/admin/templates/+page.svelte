@@ -1,6 +1,6 @@
 <script lang="ts">
     import { onMount } from 'svelte';
-    import { api, type EmailTemplate } from '$lib/api';
+    import { api, ApiError, type EmailTemplate } from '$lib/api';
 
     let templates = $state<EmailTemplate[]>([]);
     let loading = $state(true);
@@ -132,7 +132,11 @@
             showModal = false;
             await loadTemplates();
         } catch (e: any) {
-            error = e.message || 'Failed to save template';
+            if (e instanceof ApiError && (e.status === 409 || /already exists|duplicate|unique/i.test(e.message))) {
+                error = 'A template with this type already exists for this scope. Pick a different type, rename the slug, or make it event-specific.';
+            } else {
+                error = e.message || 'Failed to save template';
+            }
         } finally {
             saving = false;
         }

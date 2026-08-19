@@ -97,7 +97,19 @@ export const auth = {
 		}),
 
 	verifyEmail: (token: string) =>
-		request<{ success: boolean }>(`/auth/verify-email?token=${token}`)
+		request<{ success: boolean }>(`/auth/verify-email?token=${token}`),
+
+	forgotPassword: (email: string) =>
+		request<{ success: boolean; message: string }>('/auth/forgot-password', {
+			method: 'POST',
+			body: JSON.stringify({ email })
+		}),
+
+	resetPassword: (token: string, password: string) =>
+		request<{ success: boolean; message: string }>('/auth/reset-password', {
+			method: 'POST',
+			body: JSON.stringify({ token, password })
+		})
 };
 
 // Events endpoints
@@ -443,20 +455,20 @@ export interface Event {
 	name: string;
 	slug: string;
 	description?: string;
-	status: 'draft' | 'registration' | 'active' | 'completed' | 'finalized' | 'archived';
+	status: 'draft' | 'registration' | 'live' | 'ended' | 'archived';
 	registration_start?: string;
 	registration_end?: string;
 	registration_open?: string;   // legacy alias
 	registration_close?: string;  // legacy alias
-	start_date?: string;
-	end_date?: string;
+	event_start?: string;
+	event_end?: string;
 	max_participants?: number | null;
-	team_mode: boolean;
+	team_mode?: boolean;
 	min_team_size?: number;
 	max_team_size?: number;
 	ctfd_url?: string;
-	ctfd_api_key?: string;
-	ctfd_last_sync?: string;
+	ctfd_synced_at?: string;
+	settings?: Record<string, any>;
 	is_import_only?: boolean;
 	created_at: string;
 	updated_at?: string;
@@ -516,9 +528,8 @@ export interface Participant {
 	id: string;
 	event_id?: string;
 	email: string;
+	username?: string;
 	name: string;
-	team_id?: number;
-	team_name?: string;
 	email_verified: boolean;
 	email_verified_at?: string;
 	ctfd_provisioned: boolean;
@@ -528,7 +539,7 @@ export interface Participant {
 	is_blocked: boolean;
 	source: string;
 	created_at: string;
-	metadata?: Record<string, unknown>;
+	extra_data?: Record<string, any>;
 }
 
 export interface ParticipantRegistration {
@@ -576,6 +587,7 @@ export interface EmailProviderCreate {
 	second_limit?: number;
 	monthly_limit?: number;
 	priority: number;
+	is_active?: boolean;
 }
 
 export interface EmailTemplate {
@@ -625,43 +637,41 @@ export interface PrizeRule {
 	event_id: string;
 	name: string;
 	description?: string;
-	rank_min: number;
-	rank_max?: number;
-	prize_type: string;
-	prize_value?: string;
-	voucher_pool_id?: number;
-	voucher_pool_name?: string;
+	rank_from: number;
+	rank_to?: number;
+	voucher_pool_id?: string;
+	certificate_template_id?: string;
+	custom_prize?: Record<string, any>;
+	priority: number;
 	is_active: boolean;
-	created_at: string;
 }
 
 export interface PrizeRuleCreate {
 	name: string;
 	description?: string;
-	rank_min: number;
-	rank_max?: number;
-	prize_type: string;
-	prize_value?: string;
-	voucher_pool_id?: number;
+	rank_from: number;
+	rank_to?: number;
+	voucher_pool_id?: string;
+	certificate_template_id?: string;
+	custom_prize?: Record<string, any>;
+	priority?: number;
 }
 
 export interface Prize {
 	id: string;
-	participant_id: string;
-	event_id?: string;
-	event_name?: string;
-	prize_rule_id?: number;
-	voucher_id?: number;
-	name: string;
-	description?: string;
+	participant_id?: string;
 	prize_type: string;
-	prize_value?: string;
+	prize_data?: Record<string, any>;
 	status: 'pending' | 'available' | 'claimed' | 'expired';
 	claimed_at?: string;
 	created_at: string;
+	// Enriched display fields (populated by the participant-facing endpoint)
+	name?: string;
+	description?: string;
+	event_name?: string;
+	rank?: number;
 	voucher_code?: string;
 	voucher_instructions?: string;
-	rank?: number;
 }
 
 export interface CertificateTemplate {
@@ -730,10 +740,11 @@ export interface Certificate {
 export interface EmailCampaign {
 	id: string;
 	event_id: string;
-	template_id: string;
 	name: string;
-	status: 'draft' | 'scheduled' | 'sending' | 'completed' | 'paused' | 'failed';
-	recipient_filter?: Record<string, unknown>;
+	status: 'draft' | 'scheduled' | 'sending' | 'sent' | 'cancelled';
+	subject: string;
+	target_group: string;
+	target_config: Record<string, any>;
 	total_recipients: number;
 	sent_count: number;
 	failed_count: number;

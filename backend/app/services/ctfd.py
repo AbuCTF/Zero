@@ -609,7 +609,7 @@ class CTFdSyncService:
             
             if success and ctfd_id:
                 p.ctfd_user_id = ctfd_id
-                p.ctfd_password = password  # Store for user reference
+                p.ctfd_provisioned = True
                 provisioned += 1
         
         await self.db.flush()

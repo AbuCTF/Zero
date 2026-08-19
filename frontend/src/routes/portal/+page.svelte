@@ -20,10 +20,11 @@
 
     function getStatusBadge(status: string): { class: string; text: string } {
         switch (status) {
+            case 'draft': return { class: 'badge-secondary', text: 'Draft' };
             case 'registration': return { class: 'badge-primary', text: 'Registering' };
-            case 'active': return { class: 'badge-success', text: 'Live' };
-            case 'completed': return { class: 'badge-warning', text: 'Ended' };
-            case 'finalized': return { class: 'badge-secondary', text: 'Finalized' };
+            case 'live': return { class: 'badge-success', text: 'Live' };
+            case 'ended': return { class: 'badge-warning', text: 'Ended' };
+            case 'archived': return { class: 'badge-secondary', text: 'Archived' };
             default: return { class: 'badge-secondary', text: status };
         }
     }

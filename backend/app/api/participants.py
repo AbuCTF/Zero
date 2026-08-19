@@ -24,7 +24,7 @@ from app.api.deps import (
 )
 from app.config import get_settings
 from app.database import get_session
-from app.models import AuditLog, Certificate, EmailLog, EmailStatus, Event, Participant, Prize, Session, Team, TeamMember
+from app.models import AuditLog, Certificate, EmailLog, EmailStatus, Event, Participant, Prize, PrizeRule, PrizeStatus, Session, Team, TeamMember
 from app.schemas import BaseResponse, CertificateCustomizeRequest, ParticipantResponse, ParticipantUpdate
 from app.services.email import EmailMessage, EmailOrchestrator, render_email, render_subject
 from app.utils.ratelimit import rate_limit
@@ -93,68 +93,50 @@ async def request_access(
             message="If your email is registered, you will receive an access link shortly.",
         )
     
-    # If multiple participants and no event_id specified, return event picker
-    if len(participants) > 1 and not data.event_id:
-        # Fetch all events for these participants
-        event_ids = [p.event_id for p in participants]
-        events_result = await db.execute(
-            select(Event).where(Event.id.in_(event_ids))
-        )
-        events = events_result.scalars().all()
-        
-        return RequestAccessResponse(
-            success=True,
-            message="Please select which event you want to access.",
-            requires_event_selection=True,
-            events=[EventInfo(id=str(e.id), name=e.name, slug=e.slug) for e in events],
-        )
-    
-    # Find the specific participant (either single or selected by event_id)
+    # Never reveal which events an email is registered for to an unauthenticated
+    # caller. Select the participant(s) to notify, then always return the same
+    # generic response.
     if data.event_id:
-        participant = next((p for p in participants if str(p.event_id) == data.event_id), None)
-        if not participant:
-            return RequestAccessResponse(
-                success=True,
-                message="If your email is registered, you will receive an access link shortly.",
-            )
+        # Specific event requested - only notify that one (if it matches)
+        selected = [p for p in participants if str(p.event_id) == data.event_id]
     else:
-        participant = participants[0]
-    
+        # Single or multiple events without a selection: send one magic link per
+        # event, each scoped to its own event.
+        selected = list(participants)
+
     now = datetime.now(timezone.utc)
-    
-    # Rate limit: max 1 request per 5 minutes
-    if participant.magic_link_sent_at:
-        sent_at = participant.magic_link_sent_at
-        # Handle timezone-naive datetime
-        if sent_at.tzinfo is None:
-            sent_at = sent_at.replace(tzinfo=timezone.utc)
-        time_since_last = now - sent_at
-        if time_since_last < timedelta(minutes=5):
-            return RequestAccessResponse(
-                success=True,
-                message="If your email is registered, you will receive an access link shortly.",
-            )
-    
-    # Generate magic link token
-    magic_token = secrets.token_urlsafe(32)
-    participant.magic_link_token = magic_token
-    participant.magic_link_sent_at = now
-    participant.magic_link_expires_at = now + timedelta(hours=1)
-    
-    await db.flush()
-    
-    # Get event for email context
-    event_result = await db.execute(
-        select(Event).where(Event.id == participant.event_id)
-    )
-    event = event_result.scalar_one_or_none()
-    
-    # Build magic link URL
-    magic_link_url = f"{settings.app_url}/portal/verify?token={magic_token}"
-    
-    # Send email
-    await _send_magic_link_email(db, redis, participant, event, magic_link_url)
-    
+
+    for participant in selected:
+        # Rate limit: max 1 request per 5 minutes (per participant)
+        if participant.magic_link_sent_at:
+            sent_at = participant.magic_link_sent_at
+            # Handle timezone-naive datetime
+            if sent_at.tzinfo is None:
+                sent_at = sent_at.replace(tzinfo=timezone.utc)
+            time_since_last = now - sent_at
+            if time_since_last < timedelta(minutes=5):
+                continue
+
+        # Generate magic link token
+        magic_token = secrets.token_urlsafe(32)
+        participant.magic_link_token = magic_token
+        participant.magic_link_sent_at = now
+        participant.magic_link_expires_at = now + timedelta(hours=1)
+
+        await db.flush()
+
+        # Get event for email context
+        event_result = await db.execute(
+            select(Event).where(Event.id == participant.event_id)
+        )
+        event = event_result.scalar_one_or_none()
+
+        # Build magic link URL
+        magic_link_url = f"{settings.app_url}/portal/verify?token={magic_token}"
+
+        # Send email
+        await _send_magic_link_email(db, redis, participant, event, magic_link_url)
+
     return RequestAccessResponse(
         success=True,
         message="If your email is registered, you will receive an access link shortly.",
@@ -360,7 +342,7 @@ async def get_current_participant_info(
         is_blocked=participant.is_blocked,
         source=participant.source,
         created_at=participant.created_at,
-        metadata=participant.metadata,
+        extra_data=participant.extra_data or {},
     )
 
 
@@ -375,8 +357,8 @@ async def update_current_participant(
         participant.name = data.name
     
     if data.metadata is not None:
-        participant.metadata = {**participant.metadata, **data.metadata}
-    
+        participant.extra_data = {**(participant.extra_data or {}), **data.metadata}
+
     await db.flush()
     
     return ParticipantResponse(
@@ -393,7 +375,7 @@ async def update_current_participant(
         is_blocked=participant.is_blocked,
         source=participant.source,
         created_at=participant.created_at,
-        metadata=participant.metadata,
+        extra_data=participant.extra_data or {},
     )
 
 
@@ -572,16 +554,50 @@ async def get_participant_prizes(
         select(Prize).where(Prize.participant_id == participant.id)
     )
     prizes = result.scalars().all()
-    
-    return [
-        {
+
+    # Event name for display (all prizes belong to this participant's event)
+    event_result = await db.execute(
+        select(Event).where(Event.id == participant.event_id)
+    )
+    event = event_result.scalar_one_or_none()
+    event_name = event.name if event else None
+
+    response = []
+    for p in prizes:
+        prize_data = p.prize_data or {}
+        status = p.status.value if hasattr(p.status, "value") else p.status
+
+        # Prize name: prefer explicit title, fall back to the rule name, then type
+        name = prize_data.get("title")
+        if not name and p.rule_id:
+            rule_result = await db.execute(
+                select(PrizeRule).where(PrizeRule.id == p.rule_id)
+            )
+            rule = rule_result.scalar_one_or_none()
+            if rule:
+                name = rule.name
+        if not name:
+            name = p.prize_type.title() if p.prize_type else "Prize"
+
+        item = {
             "id": str(p.id),
-            "type": p.prize_type,
-            "status": p.status.value if hasattr(p.status, 'value') else p.status,
+            "name": name,
+            "event_name": event_name,
+            "rank": participant.final_rank,
+            "description": prize_data.get("description"),
+            "prize_type": p.prize_type,
+            "status": status,
             "claimed_at": p.claimed_at.isoformat() if p.claimed_at else None,
         }
-        for p in prizes
-    ]
+
+        # Only reveal voucher code/instructions once the prize is claimed
+        if p.status == PrizeStatus.CLAIMED:
+            item["voucher_code"] = prize_data.get("code")
+            item["voucher_instructions"] = prize_data.get("instructions")
+
+        response.append(item)
+
+    return response
 
 
 @router.get("/me/certificates")
@@ -805,7 +821,7 @@ async def download_certificate(
         # Check if template file exists
         template_path = template.template_file
         if template_path and not template_path.startswith("/"):
-            template_path = os.path.join(settings.UPLOAD_DIR, template_path)
+            template_path = os.path.join(settings.upload_dir, template_path)
         
         if not template_path or not os.path.exists(template_path):
             raise HTTPException(

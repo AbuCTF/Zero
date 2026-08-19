@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { auth, ApiError, api } from '$lib/api';
+	import { auth, ApiError } from '$lib/api';
 	import { goto } from '$app/navigation';
 
 	let email = $state('');
@@ -41,7 +41,7 @@
 		forgotLoading = true;
 
 		try {
-			await api.post('/auth/forgot-password', { email: forgotEmail });
+			await auth.forgotPassword(forgotEmail);
 			forgotMessage = 'If an account exists with this email, you will receive a password reset link.';
 		} catch (err) {
 			if (err instanceof ApiError) {

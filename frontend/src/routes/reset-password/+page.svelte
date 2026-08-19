@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { api, ApiError } from '$lib/api';
+	import { auth, ApiError } from '$lib/api';
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 
@@ -27,7 +27,7 @@
 		loading = true;
 
 		try {
-			await api.post('/auth/reset-password', { token, password });
+			await auth.resetPassword(token, password);
 			success = true;
 		} catch (err) {
 			if (err instanceof ApiError) {

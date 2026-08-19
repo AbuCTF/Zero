@@ -390,7 +390,7 @@ async def verify_certificate(
         actor_type="system",
         resource_type="certificate",
         resource_id=cert.id,
-        metadata={"verification_code": code},
+        extra_data={"verification_code": code},
     )
     db.add(audit_log)
     await db.flush()

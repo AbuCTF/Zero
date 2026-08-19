@@ -34,8 +34,8 @@ from app.models import (
     Participant,
     Session as UserSession,
 )
-from app.services.email import EmailMessage, EmailOrchestrator, EmailTemplateRenderer
-from app.services.certificates import CertificateGenerator, TextZone
+from app.services.email import EmailMessage, EmailOrchestrator, render_email, render_subject
+from app.services.certificates import CertificateData, CertificateGenerator, QRZone, TextZone
 from app.utils.security import decrypt_data
 
 logger = logging.getLogger(__name__)
@@ -129,13 +129,13 @@ async def send_email_task(
         email_log = EmailLog(
             participant_id=UUID(participant_id) if participant_id else None,
             campaign_id=UUID(campaign_id) if campaign_id else None,
-            template_id=UUID(template_id) if template_id else None,
             provider_id=result.provider_id,
-            recipient=to,
+            provider_name=result.provider_name,
+            recipient_email=to,
             subject=subject,
             status=EmailStatus.SENT if result.success else EmailStatus.FAILED,
-            external_id=result.message_id,
             error_message=result.error,
+            attempts=result.attempts,
             sent_at=datetime.utcnow() if result.success else None,
         )
         
@@ -165,123 +165,112 @@ async def process_campaign_task(ctx: Dict[str, Any], campaign_id: str):
             logger.error(f"Campaign {campaign_id} not found")
             return
         
-        if campaign.status not in [EmailStatus.PENDING, EmailStatus.PROCESSING]:
+        if campaign.status not in [CampaignStatus.SCHEDULED, CampaignStatus.SENDING]:
             logger.info(f"Campaign {campaign_id} status is {campaign.status}, skipping")
             return
-        
-        # Update status to processing
-        campaign.status = EmailStatus.PROCESSING
+
+        # Update status to sending
+        campaign.status = CampaignStatus.SENDING
+        campaign.started_at = campaign.started_at or datetime.utcnow()
         await db.commit()
-        
-        # Get template
-        result = await db.execute(
-            select(EmailTemplate).where(EmailTemplate.id == campaign.template_id)
-        )
-        template = result.scalar_one_or_none()
-        
-        if not template:
-            campaign.status = EmailStatus.FAILED
-            await db.commit()
-            logger.error(f"Template not found for campaign {campaign_id}")
-            return
-        
+
         # Get providers
         providers = await get_providers_config(db)
         if not providers:
-            campaign.status = EmailStatus.FAILED
+            campaign.status = CampaignStatus.CANCELLED
             await db.commit()
             logger.error("No active email providers")
             return
-        
+
         # Build recipient query
         query = select(Participant)
-        
+
         if campaign.event_id:
             query = query.where(Participant.event_id == campaign.event_id)
-        
-        criteria = campaign.filter_criteria or {}
-        if criteria.get("verified_only"):
+
+        criteria = campaign.target_config or {}
+        audience = criteria.get("type", campaign.target_group)
+        if audience == "verified":
             query = query.where(Participant.email_verified == True)
-        if criteria.get("unverified_only"):
+        elif audience == "unverified":
             query = query.where(Participant.email_verified == False)
-        
+
         result = await db.execute(query)
         participants = result.scalars().all()
-        
-        renderer = EmailTemplateRenderer()
+
         orchestrator = EmailOrchestrator(redis)
-        
+
         sent = 0
         failed = 0
-        
+
         for participant in participants:
             # Check if campaign was cancelled
             await db.refresh(campaign)
-            if campaign.status == EmailStatus.FAILED:
+            if campaign.status == CampaignStatus.CANCELLED:
                 logger.info(f"Campaign {campaign_id} was cancelled")
                 break
-            
+
             # Prepare context
             context = {
                 "name": participant.name or participant.username,
                 "email": participant.email,
                 "username": participant.username,
             }
-            
+
             # Render email
-            subject, body_html, body_text = renderer.render(
-                template.subject,
-                template.body_html,
-                template.body_text,
-                context,
+            subject = render_subject(campaign.subject, context)
+            body_html, body_text = render_email(
+                campaign.body_html, context, campaign.body_text
             )
-            
+
             message = EmailMessage(
                 to=participant.email,
                 subject=subject,
                 body_html=body_html,
                 body_text=body_text,
             )
-            
+
             # Send
             send_result = await orchestrator.send(message, providers)
-            
+
             # Log
             email_log = EmailLog(
                 participant_id=participant.id,
                 campaign_id=campaign.id,
-                template_id=template.id,
                 provider_id=send_result.provider_id,
-                recipient=participant.email,
+                provider_name=send_result.provider_name,
+                recipient_email=participant.email,
                 subject=subject,
+                template_slug=campaign.target_group,
                 status=EmailStatus.SENT if send_result.success else EmailStatus.FAILED,
-                external_id=send_result.message_id,
                 error_message=send_result.error,
+                attempts=send_result.attempts,
                 sent_at=datetime.utcnow() if send_result.success else None,
             )
             db.add(email_log)
-            
+
             if send_result.success:
                 sent += 1
             else:
                 failed += 1
-            
+
             # Update campaign progress
             campaign.sent_count = sent
             campaign.failed_count = failed
-            
+
             # Commit periodically
             if (sent + failed) % 10 == 0:
                 await db.commit()
-            
+
             # Small delay to avoid overwhelming providers
             await asyncio.sleep(0.1)
-        
+
         # Final update
-        campaign.status = EmailStatus.SENT
+        if campaign.status != CampaignStatus.CANCELLED:
+            campaign.status = CampaignStatus.SENT
         campaign.completed_at = datetime.utcnow()
         await db.commit()
-        
+
         logger.info(f"Campaign {campaign_id} completed: {sent} sent, {failed} failed")
 
 
@@ -314,7 +303,7 @@ async def send_verification_email_task(
         result = await db.execute(
             select(EmailTemplate).where(
                 EmailTemplate.event_id == participant.event_id,
-                EmailTemplate.template_type == "verification",
+                EmailTemplate.slug == "verification",
                 EmailTemplate.is_active == True,
             )
         )
@@ -325,13 +314,11 @@ async def send_verification_email_task(
             result = await db.execute(
                 select(EmailTemplate).where(
                     EmailTemplate.event_id.is_(None),
-                    EmailTemplate.template_type == "verification",
+                    EmailTemplate.slug == "verification",
                     EmailTemplate.is_active == True,
                 )
             )
             template = result.scalar_one_or_none()
-        
-        renderer = EmailTemplateRenderer()
         
         context = {
             "name": participant.name or participant.username,
@@ -340,18 +327,19 @@ async def send_verification_email_task(
             "event_name": event.name if event else "Event",
             "verification_url": verification_url,
         }
-        
+
         if template:
-            subject, body_html, body_text = renderer.render(
-                template.subject,
-                template.body_html,
-                template.body_text,
-                context,
+            subject = render_subject(template.subject, context)
+            body_html, body_text = render_email(
+                template.body_html, context, template.body_text
             )
         else:
             # Use default template
-            subject, body_html, body_text = renderer.render_default(
-                "verification", context
+            from app.services.email.templates import DEFAULT_TEMPLATES
+            default = DEFAULT_TEMPLATES["verification"]
+            subject = render_subject(default["subject"], context)
+            body_html, body_text = render_email(
+                default["body_html"], context, default["body_text"]
             )
         
         providers = await get_providers_config(db)
@@ -374,13 +362,14 @@ async def send_verification_email_task(
         # Log
         email_log = EmailLog(
             participant_id=participant.id,
-            template_id=template.id if template else None,
             provider_id=result.provider_id,
-            recipient=participant.email,
+            provider_name=result.provider_name,
+            recipient_email=participant.email,
             subject=subject,
+            template_slug="verification",
             status=EmailStatus.SENT if result.success else EmailStatus.FAILED,
-            external_id=result.message_id,
             error_message=result.error,
+            attempts=result.attempts,
             sent_at=datetime.utcnow() if result.success else None,
         )
         db.add(email_log)
@@ -440,55 +429,84 @@ async def generate_certificate_task(
         )
         event = result.scalar_one_or_none()
         
-        # Build text zones
+        # Build text zones from template
         text_zones = []
-        for zone_config in template.text_zones:
-            zone = TextZone(
-                text=zone_config.get("text", "").format(
-                    name=participant.name or participant.username,
-                    username=participant.username,
-                    rank=participant.final_rank or "-",
-                    score=participant.final_score or 0,
-                    event_name=event.name if event else "",
-                    event_date=event.event_start.strftime("%B %d, %Y") if event and event.event_start else "",
-                ),
-                x=zone_config.get("x", 0),
-                y=zone_config.get("y", 0),
-                font_name=zone_config.get("font_name", "Helvetica"),
-                font_size=zone_config.get("font_size", 24),
-                color=zone_config.get("color", "#000000"),
-                align=zone_config.get("align", "left"),
+        if template.text_zones:
+            for zone_config in template.text_zones:
+                text_zones.append(TextZone(
+                    id=zone_config.get("id", ""),
+                    field=zone_config.get("field", ""),
+                    x=zone_config.get("x", 0),
+                    y=zone_config.get("y", 0),
+                    width=zone_config.get("width", 100),
+                    height=zone_config.get("height", 50),
+                    font_family=zone_config.get("font_family", "Helvetica"),
+                    font_size=zone_config.get("font_size", 24),
+                    font_color=zone_config.get("font_color") or zone_config.get("color", "#000000"),
+                    alignment=zone_config.get("alignment", "center"),
+                    is_percentage=zone_config.get("is_percentage", True),
+                ))
+
+        # Build QR zone
+        qr_zone = None
+        if template.qr_zone:
+            qr_zone = QRZone(
+                x=template.qr_zone.get("x", 0),
+                y=template.qr_zone.get("y", 0),
+                size=template.qr_zone.get("size", 100),
+                is_percentage=template.qr_zone.get("is_percentage", True),
             )
-            text_zones.append(zone)
-        
+
+        # Resolve template file path
+        import os
+        template_path = template.template_file
+        if template_path and not template_path.startswith("/"):
+            template_path = os.path.join(settings.upload_dir, template_path)
+
+        # Build certificate data
+        cert_data = CertificateData(
+            participant_id=cert.participant_id,
+            display_name=cert.display_name or participant.name or participant.username or "Participant",
+            team_name=cert.team_name,
+            rank=cert.rank,
+            score=participant.final_score,
+            event_name=event.name if event else "Event",
+        )
+
         # Generate certificate
         generator = CertificateGenerator()
-        
-        verify_url = f"{settings.app_url}/verify/{cert.verification_code}"
-        
+
+        verify_url = f"{settings.app_url}/verify"
+
         if output_format == "pdf":
-            output_path = await generator.generate_pdf(
-                template_path=template.template_path,
-                output_path=f"{settings.UPLOAD_DIR}/certificates/{certificate_id}.pdf",
+            gen_result = generator.generate_pdf(
+                template_path=template_path,
+                data=cert_data,
                 text_zones=text_zones,
-                qr_data=verify_url if template.qr_zone else None,
-                qr_zone=template.qr_zone,
+                qr_zone=qr_zone,
+                verification_url_base=verify_url,
             )
         else:
-            output_path = await generator.generate_png(
-                template_path=template.template_path,
-                output_path=f"{settings.UPLOAD_DIR}/certificates/{certificate_id}.png",
+            gen_result = generator.generate_png(
+                template_path=template_path,
+                data=cert_data,
                 text_zones=text_zones,
-                qr_data=verify_url if template.qr_zone else None,
-                qr_zone=template.qr_zone,
+                qr_zone=qr_zone,
+                verification_url_base=verify_url,
             )
-        
+
+        if not gen_result.success:
+            logger.error(
+                f"Failed to generate certificate {certificate_id}: {gen_result.error}"
+            )
+            return
+
         # Update certificate record
         cert.generated_at = datetime.utcnow()
-        cert.file_path = output_path
+        cert.file_path = gen_result.file_path
         await db.commit()
-        
-        logger.info(f"Certificate {certificate_id} generated: {output_path}")
+
+        logger.info(f"Certificate {certificate_id} generated: {gen_result.file_path}")
 
 
 async def bulk_generate_certificates_task(

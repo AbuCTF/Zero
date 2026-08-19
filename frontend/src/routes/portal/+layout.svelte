@@ -95,10 +95,10 @@
                 {#if participant}
                     <div class="flex items-center gap-3 mb-3">
                         <div class="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-primary font-medium text-sm">
-                            {participant.name.charAt(0).toUpperCase()}
+                            {(participant.name || participant.email || '?').charAt(0).toUpperCase()}
                         </div>
                         <div class="flex-1 min-w-0">
-                            <div class="text-sm font-medium truncate">{participant.name}</div>
+                            <div class="text-sm font-medium truncate">{participant.name || participant.email}</div>
                             <div class="text-xs text-muted-foreground truncate">{participant.email}</div>
                         </div>
                     </div>

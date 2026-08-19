@@ -551,6 +551,7 @@ async def verify_email(
     response: Response,
     data: VerifyEmailRequest,
     db: AsyncSession = Depends(get_session),
+    redis=Depends(get_redis),
 ):
     """
     Verify participant email address.
@@ -604,7 +605,11 @@ async def verify_email(
         participant_id=participant.id,
         ip_address=get_client_ip(request),
     )
-    
+
+    # Send welcome email now that the account is verified
+    if event:
+        await _send_welcome_email(db, redis, participant, event)
+
     # TODO: Provision to CTFd if configured
     # This should be done in background task
     
@@ -736,7 +741,7 @@ async def _log_audit(
         participant_id=participant_id,
         actor_type="user" if user_id else ("participant" if participant_id else "system"),
         ip_address=ip_address,
-        metadata=metadata or {},
+        extra_data=metadata or {},
     )
     db.add(log)
     await db.flush()
@@ -820,6 +825,94 @@ async def _send_verification_email(
         provider_name=result.provider_name,
         subject=subject,
         template_slug="verification",
+        status=EmailStatus.SENT if result.success else EmailStatus.FAILED,
+        error_message=result.error,
+        attempts=result.attempts,
+        sent_at=datetime.now(timezone.utc) if result.success else None,
+    )
+    db.add(email_log)
+    await db.flush()
+
+
+async def _send_welcome_email(
+    db: AsyncSession,
+    redis,
+    participant: Participant,
+    event: Event,
+):
+    """Send welcome email to participant after email verification."""
+    from app.models import EmailProvider
+
+    # Get active providers
+    result = await db.execute(
+        select(EmailProvider).where(
+            EmailProvider.is_active == True
+        ).order_by(EmailProvider.priority)
+    )
+    providers = result.scalars().all()
+
+    if not providers:
+        # Log warning but don't fail verification
+        print("Warning: No email providers configured")
+        return
+
+    # Prepare provider configs
+    provider_configs = [
+        {
+            "id": p.id,
+            "name": p.name,
+            "type": p.provider_type.value,
+            "config": p.config,
+            "priority": p.priority,
+            "daily_limit": p.daily_limit,
+            "hourly_limit": p.hourly_limit,
+            "minute_limit": p.minute_limit,
+            "second_limit": p.second_limit,
+        }
+        for p in providers
+    ]
+
+    # Render email
+    from app.services.email.templates import DEFAULT_TEMPLATES
+
+    event_settings = event.settings or {}
+    template = DEFAULT_TEMPLATES["welcome"]
+    variables = {
+        "event_name": event.name,
+        "username": participant.username,
+        "ctfd_url": event_settings.get("site_url") or event.ctfd_url or settings.app_url,
+        "discord_url": event_settings.get("discord_url"),
+    }
+
+    body_html, body_text = render_email(
+        template["body_html"],
+        variables,
+        template["body_text"],
+    )
+    subject = render_subject(template["subject"], variables)
+
+    # Create message
+    message = EmailMessage(
+        to=participant.email,
+        subject=subject,
+        body_html=body_html,
+        body_text=body_text,
+        participant_id=participant.id,
+        template_slug="welcome",
+    )
+
+    # Send via orchestrator
+    orchestrator = EmailOrchestrator(redis)
+    result = await orchestrator.send(message, provider_configs)
+
+    # Log email
+    email_log = EmailLog(
+        recipient_email=participant.email,
+        participant_id=participant.id,
+        provider_id=result.provider_id,
+        provider_name=result.provider_name,
+        subject=subject,
+        template_slug="welcome",
         status=EmailStatus.SENT if result.success else EmailStatus.FAILED,
         error_message=result.error,
         attempts=result.attempts,
