@@ -32,6 +32,7 @@
         draft: 'badge-secondary',
         scheduled: 'badge-warning',
         sending: 'badge-primary',
+        paused: 'badge-warning',
         sent: 'badge-success',
         cancelled: 'badge-secondary'
     };
@@ -113,6 +114,24 @@
             await loadCampaigns();
         } catch (e: any) {
             error = e.message || 'Failed to start campaign';
+        }
+    }
+
+    async function pauseCampaign(id: string) {
+        try {
+            await api.admin.campaigns.pause(id);
+            await loadCampaigns();
+        } catch (e: any) {
+            error = e.message || 'Failed to pause campaign';
+        }
+    }
+
+    async function resumeCampaign(id: string) {
+        try {
+            await api.admin.campaigns.resume(id);
+            await loadCampaigns();
+        } catch (e: any) {
+            error = e.message || 'Failed to resume campaign';
         }
     }
 
@@ -198,6 +217,22 @@
                                     Start
                                 </button>
                             {/if}
+                            {#if campaign.status === 'sending'}
+                                <button
+                                    onclick={() => pauseCampaign(campaign.id)}
+                                    class="btn btn-ghost btn-sm"
+                                >
+                                    Pause
+                                </button>
+                            {/if}
+                            {#if campaign.status === 'paused'}
+                                <button
+                                    onclick={() => resumeCampaign(campaign.id)}
+                                    class="btn btn-primary btn-sm"
+                                >
+                                    Resume
+                                </button>
+                            {/if}
                             {#if campaign.status === 'draft'}
                                 <button 
                                     onclick={() => deleteCampaign(campaign.id)}
@@ -209,7 +244,7 @@
                         </div>
                     </div>
 
-                    {#if campaign.status === 'sending' || campaign.status === 'sent'}
+                    {#if campaign.status === 'sending' || campaign.status === 'paused' || campaign.status === 'sent'}
                         <div class="space-y-2">
                             <div class="flex justify-between text-sm">
                                 <span class="text-muted-foreground">Progress</span>

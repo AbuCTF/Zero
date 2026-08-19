@@ -10,7 +10,7 @@ Handles:
 
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict
 from uuid import UUID
 
@@ -198,17 +198,38 @@ async def process_campaign_task(ctx: Dict[str, Any], campaign_id: str):
         result = await db.execute(query)
         participants = result.scalars().all()
 
+        # Resume dedup: exclude participants who already have a SENT EmailLog
+        # for this campaign, so a resumed run continues from where it stopped
+        # instead of re-emailing everyone.
+        sent_result = await db.execute(
+            select(EmailLog.participant_id).where(
+                EmailLog.campaign_id == campaign.id,
+                EmailLog.status == EmailStatus.SENT,
+            )
+        )
+        already_sent_ids = {pid for pid in sent_result.scalars().all() if pid is not None}
+        if already_sent_ids:
+            participants = [p for p in participants if p.id not in already_sent_ids]
+
         orchestrator = EmailOrchestrator(redis)
 
         sent = 0
         failed = 0
 
         for participant in participants:
-            # Check if campaign was cancelled
+            # Re-read campaign state to honor cancel/pause requests mid-send
             await db.refresh(campaign)
             if campaign.status == CampaignStatus.CANCELLED:
                 logger.info(f"Campaign {campaign_id} was cancelled")
                 break
+            if campaign.status == CampaignStatus.PAUSED:
+                # Persist progress and stop without marking SENT; leave the
+                # campaign PAUSED so a later resume can continue sending.
+                campaign.sent_count = sent
+                campaign.failed_count = failed
+                await db.commit()
+                logger.info(f"Campaign {campaign_id} paused: {sent} sent, {failed} failed")
+                return
 
             # Prepare context
             context = {
@@ -266,7 +287,7 @@ async def process_campaign_task(ctx: Dict[str, Any], campaign_id: str):
             await asyncio.sleep(0.1)
 
         # Final update
-        if campaign.status != CampaignStatus.CANCELLED:
+        if campaign.status == CampaignStatus.SENDING:
             campaign.status = CampaignStatus.SENT
         campaign.completed_at = datetime.utcnow()
         await db.commit()
@@ -379,6 +400,91 @@ async def send_verification_email_task(
             logger.info(f"Verification email sent to {participant.email}")
         else:
             logger.error(f"Failed to send verification to {participant.email}: {result.error}")
+
+
+async def resend_verifications_task(
+    ctx: Dict[str, Any],
+    event_id: str,
+    participant_ids=None,
+):
+    """
+    Resend verification emails to unverified participants of an event.
+
+    Mirrors the cli.py `resend-verifications` logic: reuse each participant's
+    existing verification token (or generate a fresh one), refresh
+    email_verification_sent_at, send via the shared _send_verification_email
+    helper (which writes the EmailLog), and pace sends to respect provider
+    limits. If participant_ids is provided, only that subset is targeted.
+    """
+    from app.api.auth import _send_verification_email
+    from app.utils.security import generate_verification_token
+
+    redis = ctx["redis"]
+    event_uuid = UUID(event_id)
+
+    async with async_session() as db:
+        # Get event
+        result = await db.execute(select(Event).where(Event.id == event_uuid))
+        event = result.scalar_one_or_none()
+
+        if not event:
+            logger.error(f"Event {event_id} not found")
+            return
+
+        # Find unverified participants (optionally filtered to a subset)
+        query = (
+            select(Participant)
+            .where(
+                Participant.event_id == event_uuid,
+                Participant.email_verified == False,
+            )
+            .order_by(Participant.created_at)
+        )
+        if participant_ids:
+            ids = [UUID(str(pid)) for pid in participant_ids]
+            query = query.where(Participant.id.in_(ids))
+
+        result = await db.execute(query)
+        participants = result.scalars().all()
+
+        total = len(participants)
+        if total == 0:
+            logger.info(f"No unverified participants for event {event_id}")
+            return
+
+        sent = 0
+        skipped = 0
+        failed = 0
+        for participant in participants:
+            # Skip anyone already verified (defensive)
+            if participant.email_verified:
+                skipped += 1
+                continue
+
+            # Reuse existing token or generate a fresh one
+            token = participant.email_verification_token or generate_verification_token()
+            participant.email_verification_token = token
+            # Always refresh sent-at so the token is treated as fresh
+            participant.email_verification_sent_at = datetime.now(timezone.utc)
+            verification_url = f"{settings.app_url}/verify?token={token}"
+
+            try:
+                await _send_verification_email(db, redis, participant, event, verification_url)
+                await db.commit()
+                sent += 1
+            except Exception as e:
+                await db.rollback()
+                failed += 1
+                logger.error(f"Failed to resend verification to {participant.email}: {e}")
+
+            # Pace sends to respect provider limits
+            await asyncio.sleep(0.5)
+
+        logger.info(
+            f"Resend verifications for event {event_id} completed: "
+            f"sent={sent} skipped={skipped} failed={failed} total={total}"
+        )
+        return {"sent": sent, "skipped": skipped, "failed": failed, "total": total}
 
 
 # =============================================================================
@@ -893,6 +999,7 @@ class WorkerSettings:
         send_email_task,
         process_campaign_task,
         send_verification_email_task,
+        resend_verifications_task,
         generate_certificate_task,
         bulk_generate_certificates_task,
         sync_ctfd_results_task,

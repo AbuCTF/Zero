@@ -88,7 +88,7 @@ from app.schemas import (
     VoucherPoolResponse,
     VoucherUploadRequest,
 )
-from app.services.email import EmailMessage, EmailOrchestrator
+from app.services.email import EmailMessage, EmailOrchestrator, render_email, render_subject
 from app.utils.net import validate_public_url
 from app.utils.security import decrypt_data, encrypt_data, hash_password
 
@@ -370,7 +370,13 @@ async def get_event_admin(
             Participant.email_verified == True,
         )
     )
-    
+    with_results_count = await db.scalar(
+        select(func.count()).where(
+            Participant.event_id == event.id,
+            Participant.final_rank.isnot(None),
+        )
+    )
+
     return EventResponse(
         id=event.id,
         name=event.name,
@@ -387,6 +393,7 @@ async def get_event_admin(
         created_at=event.created_at,
         participant_count=participant_count or 0,
         verified_count=verified_count or 0,
+        with_results_count=with_results_count or 0,
         is_import_only=event.settings.get("is_import_only", False) if event.settings else False,
         team_mode=event.settings.get("team_mode", False) if event.settings else False,
     )
@@ -534,7 +541,14 @@ async def get_event_stats(
             Participant.email_verified == True,
         )
     ) or 0
-    
+
+    with_results_count = await db.scalar(
+        select(func.count()).where(
+            Participant.event_id == event_id,
+            Participant.final_rank.isnot(None),
+        )
+    ) or 0
+
     ctfd_provisioned = await db.scalar(
         select(func.count()).where(
             Participant.event_id == event_id,
@@ -611,6 +625,7 @@ async def get_event_stats(
     return EventStats(
         participant_count=participant_count,
         verified_count=verified_count,
+        with_results_count=with_results_count,
         ctfd_provisioned_count=ctfd_provisioned,
         team_count=team_count,
         emails_sent=emails_sent,
@@ -1294,8 +1309,74 @@ async def get_import_progress(
     if "progress" not in decoded and decoded.get("total", 0) > 0:
         processed = decoded.get("imported", 0) + decoded.get("updated", 0) + decoded.get("skipped", 0) + len(decoded.get("errors", []))
         decoded["progress"] = min(100, int((processed / decoded["total"]) * 100))
-    
+
     return decoded
+
+
+class ResendVerificationsRequest(BaseModel):
+    participant_ids: Optional[List[UUID]] = None
+
+
+@router.post("/events/{event_id}/resend-verifications")
+async def resend_verifications(
+    event_id: UUID,
+    data: Optional[ResendVerificationsRequest] = None,
+    user: User = Depends(require_organizer),
+    db: AsyncSession = Depends(get_session),
+):
+    """
+    Resend verification emails to unverified participants of an event.
+
+    Enqueues a background job that reuses (or generates) each participant's
+    verification token and re-sends the email. If a participant_ids list is
+    provided in the body, only those participants are targeted; otherwise all
+    unverified participants for the event are targeted.
+    """
+    from arq import create_pool
+    from arq.connections import RedisSettings
+    from urllib.parse import urlparse
+
+    result = await db.execute(select(Event).where(Event.id == event_id))
+    event = result.scalar_one_or_none()
+
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    participant_ids = data.participant_ids if data else None
+
+    # Count eligible unverified participants
+    conditions = [
+        Participant.event_id == event_id,
+        Participant.email_verified == False,
+    ]
+    if participant_ids:
+        conditions.append(Participant.id.in_(participant_ids))
+
+    queued_count = await db.scalar(
+        select(func.count(Participant.id)).where(*conditions)
+    ) or 0
+
+    # Queue background job (same arq pattern as import_participants)
+    parsed = urlparse(settings.redis_url)
+    redis_settings = RedisSettings(
+        host=parsed.hostname or "localhost",
+        port=parsed.port or 6379,
+        password=parsed.password,
+        database=int(parsed.path.lstrip("/") or 0),
+    )
+    pool = await create_pool(redis_settings)
+    job = await pool.enqueue_job(
+        "resend_verifications_task",
+        str(event_id),
+        [str(pid) for pid in participant_ids] if participant_ids else None,
+    )
+    await pool.close()
+
+    return {
+        "success": True,
+        "job_id": job.job_id if job else None,
+        "queued_count": queued_count,
+    }
 
 
 @router.post("/events/{event_id}/participants/import-csv", response_model=ParticipantImportResponse)
@@ -2316,8 +2397,9 @@ async def create_certificate_template(
         is_default=data.is_default,
     )
     
-    # If setting as default, unset other defaults for this event
-    if data.is_default:
+    # If setting as default, unset other defaults for this event.
+    # Global templates (no event_id) have no per-event default to manage.
+    if data.is_default and data.event_id:
         result = await db.execute(
             select(CertificateTemplate).where(
                 CertificateTemplate.event_id == data.event_id,
@@ -2326,12 +2408,14 @@ async def create_certificate_template(
         )
         for existing in result.scalars().all():
             existing.is_default = False
-    
+
     db.add(template)
     await db.flush()
-    
-    # Auto-generate certificates for all participants when template is marked as default
-    if data.is_default:
+
+    # Auto-generate certificates for all participants when template is marked as
+    # default. Only meaningful for event-scoped templates (a global template has
+    # no participant set to generate for).
+    if data.is_default and data.event_id:
         result = await db.execute(
             select(Participant).where(Participant.event_id == data.event_id)
         )
@@ -2654,14 +2738,6 @@ async def list_prize_rules(
     
     responses = []
     for r in rules:
-        # Get pool name if applicable
-        pool_name = None
-        if r.voucher_pool_id:
-            pool_result = await db.execute(
-                select(VoucherPool.name).where(VoucherPool.id == r.voucher_pool_id)
-            )
-            pool_name = pool_result.scalar()
-        
         responses.append(
             PrizeRuleResponse(
                 id=r.id,
@@ -2694,15 +2770,12 @@ async def create_prize_rule(
         raise HTTPException(status_code=404, detail="Event not found")
     
     # Validate voucher pool if specified
-    pool_name = None
     if data.voucher_pool_id:
         result = await db.execute(
             select(VoucherPool).where(VoucherPool.id == data.voucher_pool_id)
         )
-        pool = result.scalar_one_or_none()
-        if not pool:
+        if not result.scalar_one_or_none():
             raise HTTPException(status_code=404, detail="Voucher pool not found")
-        pool_name = pool.name
     
     rule = PrizeRule(
         event_id=event_id,
@@ -2933,6 +3006,62 @@ async def start_campaign(
     )
 
 
+@router.post("/campaigns/{campaign_id}/pause", response_model=BaseResponse)
+async def pause_campaign(
+    campaign_id: UUID,
+    user: User = Depends(require_organizer),
+    db: AsyncSession = Depends(get_session),
+):
+    """Pause a sending campaign so the worker stops picking it up."""
+    result = await db.execute(
+        select(EmailCampaign).where(EmailCampaign.id == campaign_id)
+    )
+    campaign = result.scalar_one_or_none()
+
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    if campaign.status != CampaignStatus.SENDING:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot pause campaign with status {campaign.status.value}",
+        )
+
+    campaign.status = CampaignStatus.PAUSED
+    await db.flush()
+
+    return BaseResponse(success=True, message="Campaign paused")
+
+
+@router.post("/campaigns/{campaign_id}/resume", response_model=BaseResponse)
+async def resume_campaign(
+    campaign_id: UUID,
+    user: User = Depends(require_organizer),
+    db: AsyncSession = Depends(get_session),
+):
+    """Resume a paused campaign by rescheduling it for the cron to re-pick."""
+    result = await db.execute(
+        select(EmailCampaign).where(EmailCampaign.id == campaign_id)
+    )
+    campaign = result.scalar_one_or_none()
+
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+
+    if campaign.status != CampaignStatus.PAUSED:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot resume campaign with status {campaign.status.value}",
+        )
+
+    # Back to SCHEDULED so the process_pending_campaigns cron re-picks it up.
+    campaign.status = CampaignStatus.SCHEDULED
+    campaign.scheduled_for = campaign.scheduled_for or datetime.utcnow()
+    await db.flush()
+
+    return BaseResponse(success=True, message="Campaign resumed")
+
+
 @router.post("/campaigns/{campaign_id}/cancel", response_model=BaseResponse)
 async def cancel_campaign(
     campaign_id: UUID,
@@ -2994,6 +3123,7 @@ async def finalize_event(
     request: Request,
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
+    redis=Depends(get_redis),
 ):
     """
     Finalize an event.
@@ -3037,7 +3167,8 @@ async def finalize_event(
     
     prizes_assigned = 0
     certs_created = 0
-    
+    prize_winners = {}  # participant_id -> participant, for prize_ready emails
+
     # Assign prizes only to ranked participants
     for participant in ranked_participants:
         rank = participant.final_rank
@@ -3095,7 +3226,8 @@ async def finalize_event(
                 )
                 db.add(prize)
                 prizes_assigned += 1
-    
+                prize_winners[participant.id] = participant
+
     # Get default template once for certificate creation
     result = await db.execute(
         select(CertificateTemplate).where(
@@ -3122,7 +3254,82 @@ async def finalize_event(
             )
             db.add(cert)
             certs_created += 1
-    
+
+    # Notify winners that their prizes are ready (same inline pattern as
+    # auth._send_verification_email). Best-effort: never block finalization.
+    if prize_winners:
+        result = await db.execute(
+            select(EmailProvider).where(
+                EmailProvider.is_active == True
+            ).order_by(EmailProvider.priority)
+        )
+        providers = result.scalars().all()
+
+        if providers:
+            from app.services.email.templates import DEFAULT_TEMPLATES
+
+            provider_configs = [
+                {
+                    "id": p.id,
+                    "name": p.name,
+                    "type": p.provider_type.value,
+                    "config": p.config,
+                    "priority": p.priority,
+                    "daily_limit": p.daily_limit,
+                    "hourly_limit": p.hourly_limit,
+                    "minute_limit": p.minute_limit,
+                    "second_limit": p.second_limit,
+                }
+                for p in providers
+            ]
+
+            template = DEFAULT_TEMPLATES["prize_ready"]
+            claim_url = f"{settings.app_url}/portal"
+            orchestrator = EmailOrchestrator(redis)
+
+            for participant in prize_winners.values():
+                variables = {
+                    "event_name": event.name,
+                    "name": participant.name or participant.username,
+                    "rank": participant.final_rank,
+                    "score": participant.final_score,
+                    "claim_url": claim_url,
+                }
+
+                body_html, body_text = render_email(
+                    template["body_html"],
+                    variables,
+                    template["body_text"],
+                )
+                subject = render_subject(template["subject"], variables)
+
+                message = EmailMessage(
+                    to=participant.email,
+                    subject=subject,
+                    body_html=body_html,
+                    body_text=body_text,
+                    participant_id=participant.id,
+                    template_slug="prize_ready",
+                )
+
+                send_result = await orchestrator.send(message, provider_configs)
+
+                email_log = EmailLog(
+                    recipient_email=participant.email,
+                    participant_id=participant.id,
+                    provider_id=send_result.provider_id,
+                    provider_name=send_result.provider_name,
+                    subject=subject,
+                    template_slug="prize_ready",
+                    status=EmailStatus.SENT if send_result.success else EmailStatus.FAILED,
+                    error_message=send_result.error,
+                    attempts=send_result.attempts,
+                    sent_at=datetime.utcnow() if send_result.success else None,
+                )
+                db.add(email_log)
+
+            await db.flush()
+
     event.status = EventStatus.ENDED
 
     # Audit log

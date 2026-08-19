@@ -278,7 +278,8 @@ class EventResponse(BaseModel):
     # Stats (populated separately)
     participant_count: Optional[int] = None
     verified_count: Optional[int] = None
-    
+    with_results_count: Optional[int] = None
+
     # Computed fields for frontend convenience
     is_import_only: Optional[bool] = None
     team_mode: Optional[bool] = None
@@ -572,7 +573,7 @@ class PrizeClaimRequest(BaseModel):
 
 class CertificateTemplateCreate(BaseModel):
     """Create certificate template."""
-    event_id: UUID
+    event_id: Optional[UUID] = None  # None = global template (any event)
     name: str = Field(..., max_length=255)
     description: Optional[str] = None
     background_image: Optional[str] = None  # URL or base64 of background image
@@ -605,9 +606,9 @@ class CertificateTemplateUpdate(BaseModel):
 class CertificateTemplateResponse(BaseModel):
     """Certificate template response."""
     model_config = ConfigDict(from_attributes=True)
-    
+
     id: UUID
-    event_id: UUID
+    event_id: Optional[UUID] = None  # None = global template
     name: str
     description: Optional[str]
     template_file: Optional[str] = None
@@ -720,6 +721,7 @@ class EventStats(BaseModel):
     """Event-specific statistics."""
     participant_count: int
     verified_count: int
+    with_results_count: int
     ctfd_provisioned_count: int
     team_count: int
     emails_sent: int

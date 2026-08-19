@@ -187,14 +187,21 @@ export const admin = {
 		provisionCtfd: (id: string) =>
 			request<{ success: boolean; message: string; stats?: { provisioned: number } }>(`/admin/events/${id}/ctfd/provision`, {
 				method: 'POST'
+			}),
+
+		resendVerifications: (id: string, body?: { participant_ids?: string[] }) =>
+			request<{ success: boolean; queued_count: number; message?: string }>(`/admin/events/${id}/resend-verifications`, {
+				method: 'POST',
+				body: JSON.stringify(body ?? {})
 			})
 	},
 
 	// Participants
 	participants: {
-		list: (eventId: string, page = 1, perPage = 50, search?: string) => {
+		list: (eventId: string, page = 1, perPage = 50, search?: string, verified?: boolean) => {
 			let url = `/admin/events/${eventId}/participants?page=${page}&per_page=${perPage}`;
 			if (search) url += `&search=${encodeURIComponent(search)}`;
+			if (verified !== undefined) url += `&verified=${verified}`;
 			return request<{ participants: Participant[]; total: number; page: number; pages: number; per_page: number }>(url);
 		},
 
@@ -291,7 +298,17 @@ export const admin = {
 			request<{ success: boolean; message: string }>(
 				`/admin/voucher-pools/${poolId}/vouchers`,
 				{ method: 'POST', body: JSON.stringify({ codes }) }
-			)
+			),
+
+		uploadCsv: (poolId: string, file: File) => {
+			const formData = new FormData();
+			formData.append('file', file);
+			return fetch(`${API_BASE}/admin/voucher-pools/${poolId}/vouchers/csv`, {
+				method: 'POST',
+				body: formData,
+				credentials: 'include'
+			}).then((res) => res.json());
+		}
 	},
 
 	// Prize Rules
@@ -368,6 +385,11 @@ export const admin = {
 
 		pause: (id: string) =>
 			request<{ success: boolean; message: string }>(`/admin/campaigns/${id}/pause`, {
+				method: 'POST'
+			}),
+
+		resume: (id: string) =>
+			request<{ success: boolean; message: string }>(`/admin/campaigns/${id}/resume`, {
 				method: 'POST'
 			}),
 
@@ -474,6 +496,7 @@ export interface Event {
 	updated_at?: string;
 	participant_count?: number;
 	verified_count?: number;
+	with_results_count?: number;
 }
 
 export interface EventCreate {
@@ -496,6 +519,7 @@ export interface EventCreate {
 export interface EventStats {
 	participant_count: number;
 	verified_count: number;
+	with_results_count?: number;
 	ctfd_provisioned_count: number;
 	team_count: number;
 	emails_sent: number;
@@ -706,7 +730,7 @@ export interface QRZone {
 }
 
 export interface CertificateTemplateCreate {
-	event_id?: number;
+	event_id?: string | null;
 	name: string;
 	description?: string;
 	background_image?: string;
@@ -741,7 +765,7 @@ export interface EmailCampaign {
 	id: string;
 	event_id: string;
 	name: string;
-	status: 'draft' | 'scheduled' | 'sending' | 'sent' | 'cancelled';
+	status: 'draft' | 'scheduled' | 'sending' | 'paused' | 'sent' | 'cancelled';
 	subject: string;
 	target_group: string;
 	target_config: Record<string, any>;

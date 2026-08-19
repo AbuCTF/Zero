@@ -2,7 +2,7 @@
     import { onMount } from 'svelte';
     import { page } from '$app/stores';
     import { goto } from '$app/navigation';
-    import { api, type Event, type Participant, type EventStats } from '$lib/api';
+    import { api, type Event, type Participant, type EventStats, type VoucherPool } from '$lib/api';
     import { formatDate, formatNumber } from '$lib/utils';
 
     const eventId = $derived($page.params.id);
@@ -17,6 +17,16 @@
     let perPage = $state(50);
     let loading = $state(true);
     let error = $state('');
+
+    // Participants tab: search / filter / bulk-select / resend
+    let participantSearch = $state('');
+    let participantFilter = $state<'all' | 'verified' | 'unverified'>('all');
+    let searchDebounce: ReturnType<typeof setTimeout> | undefined;
+    let selectedIds = $state<string[]>([]);
+    let resendingAll = $state(false);
+    let resendingSelected = $state(false);
+    let resendResult = $state<{ queued_count: number; message?: string } | null>(null);
+    const allSelectedOnPage = $derived(participants.length > 0 && participants.every(p => selectedIds.includes(p.id)));
     let activeTab = $state<'overview' | 'participants' | 'prizes' | 'settings'>('overview');
     
     let provisioning = $state(false);
@@ -67,9 +77,18 @@
         rank_from: 1,
         rank_to: 3,
         certificate_template_id: '',
+        voucher_pool_id: '',
         custom_prize_title: '',
         custom_prize_description: ''
     });
+
+    // Voucher pools
+    let voucherPools = $state<VoucherPool[]>([]);
+    let loadingVoucherPools = $state(false);
+    let showPoolModal = $state(false);
+    let creatingPool = $state(false);
+    let newPool = $state({ name: '', description: '', platform: '' });
+    let uploadingPoolId = $state<string | null>(null);
     
     // Manual assignment
     let showAssignModal = $state(false);
@@ -145,13 +164,17 @@
 
     async function loadParticipants(page: number) {
         try {
-            const response = await api.admin.participants.list(eventId, page, perPage);
+            const search = participantSearch.trim() || undefined;
+            const verified = participantFilter === 'all' ? undefined : participantFilter === 'verified';
+            const response = await api.admin.participants.list(eventId, page, perPage, search, verified);
             participants = response.participants || [];
             totalParticipants = response.total || 0;
             currentPage = response.page || 1;
             totalPages = response.pages || 1;
             // Calculate verified count from event stats or estimate
             totalVerified = event?.verified_count || participants.filter(p => p.email_verified).length;
+            // Drop selections for rows that are no longer on the loaded page
+            selectedIds = selectedIds.filter(id => participants.some(p => p.id === id));
         } catch (e: any) {
             error = e.message || 'Failed to load participants';
         }
@@ -169,6 +192,62 @@
     async function goToPage(page: number) {
         if (page < 1 || page > totalPages) return;
         await loadParticipants(page);
+    }
+
+    function onParticipantSearchInput() {
+        clearTimeout(searchDebounce);
+        searchDebounce = setTimeout(() => {
+            currentPage = 1;
+            loadParticipants(1);
+        }, 300);
+    }
+
+    function onParticipantFilterChange() {
+        currentPage = 1;
+        loadParticipants(1);
+    }
+
+    function toggleSelect(id: string) {
+        selectedIds = selectedIds.includes(id)
+            ? selectedIds.filter(x => x !== id)
+            : [...selectedIds, id];
+    }
+
+    function toggleSelectAll() {
+        const pageIds = participants.map(p => p.id);
+        const allSelected = pageIds.length > 0 && pageIds.every(id => selectedIds.includes(id));
+        selectedIds = allSelected
+            ? selectedIds.filter(id => !pageIds.includes(id))
+            : Array.from(new Set([...selectedIds, ...pageIds]));
+    }
+
+    function clearSelection() {
+        selectedIds = [];
+    }
+
+    async function resendUnverified(participantIds?: string[]) {
+        const scoped = !!participantIds && participantIds.length > 0;
+        const confirmMsg = scoped
+            ? `Resend verification emails to ${participantIds!.length} selected participant(s)?`
+            : 'Resend verification emails to all unverified participants of this event?';
+        if (!confirm(confirmMsg)) return;
+
+        if (scoped) resendingSelected = true; else resendingAll = true;
+        error = '';
+        resendResult = null;
+        try {
+            const result = await api.admin.events.resendVerifications(
+                eventId,
+                scoped ? { participant_ids: participantIds } : undefined
+            );
+            resendResult = { queued_count: result.queued_count ?? 0, message: result.message };
+            if (scoped) clearSelection();
+        } catch (e: any) {
+            error = e.message || 'Failed to resend verification emails';
+        } finally {
+            resendingSelected = false;
+            resendingAll = false;
+        }
     }
 
     async function exportParticipants() {
@@ -396,6 +475,7 @@
         try {
             await api.admin.participants.delete(eventId, id);
             participants = participants.filter(p => p.id !== id);
+            selectedIds = selectedIds.filter(sid => sid !== id);
         } catch (e: any) {
             error = e.message || 'Failed to delete participant';
         }
@@ -450,6 +530,7 @@
                 rank_from: newRule.rank_from,
                 rank_to: newRule.rank_to,
                 certificate_template_id: newRule.certificate_template_id || null,
+                voucher_pool_id: newRule.voucher_pool_id || null,
                 custom_prize: newRule.custom_prize_title ? {
                     title: newRule.custom_prize_title,
                     description: newRule.custom_prize_description
@@ -467,7 +548,7 @@
             
             await loadPrizeRules();
             showPrizeRuleModal = false;
-            newRule = { name: '', rank_from: 1, rank_to: 3, certificate_template_id: '', custom_prize_title: '', custom_prize_description: '' };
+            newRule = { name: '', rank_from: 1, rank_to: 3, certificate_template_id: '', voucher_pool_id: '', custom_prize_title: '', custom_prize_description: '' };
         } catch (e: any) {
             error = e.message || 'Failed to save prize rule';
         }
@@ -483,6 +564,55 @@
             prizeRules = prizeRules.filter(r => r.id !== ruleId);
         } catch (e: any) {
             error = e.message || 'Failed to delete rule';
+        }
+    }
+
+    // Voucher pool functions
+    async function loadVoucherPools() {
+        loadingVoucherPools = true;
+        try {
+            voucherPools = await api.admin.voucherPools.list(eventId);
+        } catch (e) {
+            console.error('Failed to load voucher pools', e);
+        } finally {
+            loadingVoucherPools = false;
+        }
+    }
+
+    async function createVoucherPool() {
+        if (!newPool.name.trim()) return;
+        creatingPool = true;
+        try {
+            await api.admin.voucherPools.create(eventId, {
+                name: newPool.name,
+                description: newPool.description || undefined,
+                platform: newPool.platform || undefined
+            });
+            await loadVoucherPools();
+            showPoolModal = false;
+            newPool = { name: '', description: '', platform: '' };
+        } catch (e: any) {
+            error = e.message || 'Failed to create voucher pool';
+        } finally {
+            creatingPool = false;
+        }
+    }
+
+    async function uploadPoolCsv(poolId: string, input: HTMLInputElement) {
+        const file = input?.files?.[0];
+        if (!file) return;
+        uploadingPoolId = poolId;
+        try {
+            const result = await api.admin.voucherPools.uploadCsv(poolId, file);
+            if (result && result.success === false) {
+                throw new Error(result.message || result.detail || 'Upload failed');
+            }
+            await loadVoucherPools();
+        } catch (e: any) {
+            error = e.message || 'Failed to upload voucher codes';
+        } finally {
+            uploadingPoolId = null;
+            if (input) input.value = '';
         }
     }
 
@@ -548,6 +678,7 @@
         if (activeTab === 'prizes' && !prizeRulesLoaded && !loadingPrizes) {
             prizeRulesLoaded = true;
             loadPrizeRules();
+            loadVoucherPools();
         }
     });
 </script>
@@ -724,7 +855,7 @@
                         <div>
                             <div class="text-xs font-medium text-muted-foreground uppercase tracking-wide">With Results</div>
                             <div class="text-2xl font-semibold mt-1 tracking-tight">
-                                {formatNumber(participants.filter(p => p.final_rank).length)}
+                                {formatNumber(event?.with_results_count ?? eventStats?.with_results_count ?? participants.filter(p => p.final_rank).length)}
                             </div>
                         </div>
                         <div class="w-10 h-10 rounded-lg bg-accent/50 flex items-center justify-center text-muted-foreground group-hover:bg-accent transition-colors">
@@ -810,23 +941,89 @@
                 </div>
             </div>
 
+            <!-- Search / filter / resend controls -->
+            <div class="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
+                <div class="relative flex-1">
+                    <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                    <input
+                        type="text"
+                        bind:value={participantSearch}
+                        oninput={onParticipantSearchInput}
+                        placeholder="Search by name, email, or username..."
+                        class="input pl-9 w-full"
+                    />
+                </div>
+                <select bind:value={participantFilter} onchange={onParticipantFilterChange} class="input sm:w-44">
+                    <option value="all">All</option>
+                    <option value="verified">Verified</option>
+                    <option value="unverified">Unverified</option>
+                </select>
+                <button
+                    onclick={() => resendUnverified()}
+                    disabled={resendingAll}
+                    class="btn btn-secondary gap-2 whitespace-nowrap"
+                    title="Queue a verification email to every unverified participant"
+                >
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                    {resendingAll ? 'Sending...' : 'Resend to all unverified'}
+                </button>
+            </div>
+
+            {#if resendResult}
+                <div class="bg-success/10 text-success px-4 py-3 rounded-lg mb-4 flex items-start justify-between">
+                    <p class="font-medium">
+                        {resendResult.message || `Queued ${formatNumber(resendResult.queued_count)} verification email${resendResult.queued_count !== 1 ? 's' : ''}.`}
+                    </p>
+                    <button onclick={() => resendResult = null} class="text-muted-foreground hover:text-foreground">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                </div>
+            {/if}
+
+            {#if selectedIds.length > 0}
+                <div class="flex items-center justify-between gap-3 bg-accent/50 border border-border rounded-lg px-4 py-2.5 mb-4">
+                    <span class="text-sm font-medium">{selectedIds.length} selected</span>
+                    <div class="flex items-center gap-2">
+                        <button onclick={() => resendUnverified(selectedIds)} disabled={resendingSelected} class="btn btn-primary btn-sm gap-2">
+                            {resendingSelected ? 'Sending...' : 'Resend to selected'}
+                        </button>
+                        <button onclick={clearSelection} class="btn btn-ghost btn-sm">Clear selection</button>
+                    </div>
+                </div>
+            {/if}
+
             {#if participants.length === 0}
                 <div class="card p-12 text-center">
                     <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-accent/50 flex items-center justify-center">
                         <svg class="w-8 h-8 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                     </div>
-                    <div class="text-foreground font-medium mb-1">No participants yet</div>
-                    <p class="text-sm text-muted-foreground mb-4">Import a list of participants to get started</p>
-                    <button onclick={() => showImportModal = true} class="btn btn-primary">
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
-                        Import Participants
-                    </button>
+                    {#if participantSearch || participantFilter !== 'all'}
+                        <div class="text-foreground font-medium mb-1">No matching participants</div>
+                        <p class="text-sm text-muted-foreground mb-4">Try adjusting your search or filter</p>
+                    {:else}
+                        <div class="text-foreground font-medium mb-1">No participants yet</div>
+                        <p class="text-sm text-muted-foreground mb-4">Import a list of participants to get started</p>
+                        <button onclick={() => showImportModal = true} class="btn btn-primary">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
+                            Import Participants
+                        </button>
+                    {/if}
                 </div>
             {:else}
                 <div class="card overflow-hidden">
+                  <div class="overflow-x-auto">
                     <table class="w-full">
                         <thead class="bg-muted/50">
                             <tr>
+                                <th class="px-4 py-3 w-10">
+                                    <input
+                                        type="checkbox"
+                                        class="rounded border-border"
+                                        checked={allSelectedOnPage}
+                                        onchange={toggleSelectAll}
+                                        aria-label="Select all participants on this page"
+                                    />
+                                </th>
                                 <th class="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">
                                     Name
                                 </th>
@@ -837,10 +1034,19 @@
                                     Team
                                 </th>
                                 <th class="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">
+                                    Country
+                                </th>
+                                <th class="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">
                                     Rank
                                 </th>
                                 <th class="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">
+                                    Registered
+                                </th>
+                                <th class="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">
                                     Status
+                                </th>
+                                <th class="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">
+                                    Verified
                                 </th>
                                 <th class="text-right text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">
                                     Actions
@@ -851,6 +1057,15 @@
                             {#each participants as participant}
                                 <tr class="hover:bg-muted/30">
                                     <td class="px-4 py-3">
+                                        <input
+                                            type="checkbox"
+                                            class="rounded border-border"
+                                            checked={selectedIds.includes(participant.id)}
+                                            onchange={() => toggleSelect(participant.id)}
+                                            aria-label="Select participant"
+                                        />
+                                    </td>
+                                    <td class="px-4 py-3">
                                         <div class="font-medium">{participant.name}</div>
                                     </td>
                                     <td class="px-4 py-3 text-sm text-muted-foreground">
@@ -860,7 +1075,13 @@
                                         {participant.extra_data?.team_name || '-'}
                                     </td>
                                     <td class="px-4 py-3 text-sm">
+                                        {participant.extra_data?.country || '-'}
+                                    </td>
+                                    <td class="px-4 py-3 text-sm">
                                         {participant.final_rank || '-'}
+                                    </td>
+                                    <td class="px-4 py-3 text-sm text-muted-foreground whitespace-nowrap">
+                                        {participant.created_at ? formatDate(participant.created_at) : '-'}
                                     </td>
                                     <td class="px-4 py-3">
                                         {#if participant.email_verified}
@@ -868,6 +1089,9 @@
                                         {:else}
                                             <span class="badge badge-secondary">Unverified</span>
                                         {/if}
+                                    </td>
+                                    <td class="px-4 py-3 text-sm text-muted-foreground whitespace-nowrap">
+                                        {participant.email_verified_at ? formatDate(participant.email_verified_at) : '-'}
                                     </td>
                                     <td class="px-4 py-3 text-right">
                                         <div class="flex items-center justify-end gap-1">
@@ -892,6 +1116,7 @@
                             {/each}
                         </tbody>
                     </table>
+                  </div>
                 </div>
 
                 <!-- Pagination -->
@@ -987,8 +1212,11 @@
                                                 {#if rule.certificate_template_id}
                                                     Certificate: {certTemplates.find(t => t.id === rule.certificate_template_id)?.name || 'Custom'}
                                                 {/if}
+                                                {#if rule.voucher_pool_id}
+                                                    {rule.certificate_template_id ? ' + ' : ''}Voucher: {voucherPools.find(p => p.id === rule.voucher_pool_id)?.name || 'Pool'}
+                                                {/if}
                                                 {#if rule.custom_prize?.title}
-                                                    {rule.certificate_template_id ? ' + ' : ''}Prize: {rule.custom_prize.title}
+                                                    {rule.certificate_template_id || rule.voucher_pool_id ? ' + ' : ''}Prize: {rule.custom_prize.title}
                                                 {/if}
                                             </div>
                                         </div>
@@ -996,6 +1224,59 @@
                                     <button onclick={() => deletePrizeRule(rule.id)} class="btn btn-ghost btn-sm text-destructive">
                                         Delete
                                     </button>
+                                </div>
+                            {/each}
+                        </div>
+                    {/if}
+                </div>
+
+                <!-- Voucher Pools Section -->
+                <div class="card p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <div>
+                            <h3 class="font-medium">Voucher Pools</h3>
+                            <p class="text-sm text-muted-foreground">Upload reusable voucher codes that prize rules can grant to winners</p>
+                        </div>
+                        <button onclick={() => showPoolModal = true} class="btn btn-primary gap-2">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>
+                            New Pool
+                        </button>
+                    </div>
+
+                    {#if loadingVoucherPools}
+                        <div class="p-8 text-center text-muted-foreground">Loading...</div>
+                    {:else if voucherPools.length === 0}
+                        <div class="p-8 text-center border-2 border-dashed border-border rounded-lg">
+                            <svg class="w-12 h-12 mx-auto text-muted-foreground/50 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" /></svg>
+                            <p class="text-muted-foreground mb-2">No voucher pools yet</p>
+                            <p class="text-sm text-muted-foreground">Create a pool, then upload voucher codes via CSV</p>
+                        </div>
+                    {:else}
+                        <div class="space-y-3">
+                            {#each voucherPools as pool}
+                                <div class="flex items-center justify-between p-4 bg-muted/30 rounded-lg gap-4">
+                                    <div class="flex items-center gap-4 min-w-0">
+                                        <div class="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0">
+                                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" /></svg>
+                                        </div>
+                                        <div class="min-w-0">
+                                            <div class="font-medium truncate">{pool.name}</div>
+                                            <div class="text-sm text-muted-foreground">
+                                                {pool.claimed_count} / {pool.total_count} claimed
+                                                {#if pool.platform} · {pool.platform}{/if}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <label class="btn btn-ghost btn-sm shrink-0 cursor-pointer">
+                                        {uploadingPoolId === pool.id ? 'Uploading...' : 'Upload CSV'}
+                                        <input
+                                            type="file"
+                                            accept=".csv,text/csv"
+                                            class="hidden"
+                                            disabled={uploadingPoolId === pool.id}
+                                            onchange={(e) => uploadPoolCsv(pool.id, e.currentTarget)}
+                                        />
+                                    </label>
                                 </div>
                             {/each}
                         </div>
@@ -1471,7 +1752,20 @@
                         <a href="/admin/certificates" class="text-primary hover:underline">Manage templates →</a>
                     </p>
                 </div>
-                
+
+                <div>
+                    <label class="block text-sm font-medium mb-1.5">Voucher Pool</label>
+                    <select bind:value={newRule.voucher_pool_id} class="input">
+                        <option value="">No voucher</option>
+                        {#each voucherPools as pool}
+                            <option value={pool.id}>{pool.name} ({pool.total_count - pool.claimed_count} available)</option>
+                        {/each}
+                    </select>
+                    <p class="text-xs text-muted-foreground mt-1">
+                        Winners in this rank range each receive a code from the pool
+                    </p>
+                </div>
+
                 <div class="border-t border-border pt-4">
                     <label class="block text-sm font-medium mb-1.5">Custom Prize (Optional)</label>
                     <input 
@@ -1492,6 +1786,40 @@
             <div class="px-6 py-4 border-t border-border flex justify-end gap-3">
                 <button onclick={() => showPrizeRuleModal = false} class="btn btn-ghost">Cancel</button>
                 <button onclick={savePrizeRule} class="btn btn-primary">Save Rule</button>
+            </div>
+        </div>
+    </div>
+{/if}
+
+<!-- New Voucher Pool Modal -->
+{#if showPoolModal}
+    <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div class="card w-full max-w-md">
+            <div class="p-6 border-b border-border">
+                <h2 class="text-lg font-semibold">New Voucher Pool</h2>
+                <p class="text-sm text-muted-foreground">Create a pool, then upload codes via CSV</p>
+            </div>
+
+            <div class="p-6 space-y-4">
+                <div>
+                    <label class="block text-sm font-medium mb-1.5">Pool Name</label>
+                    <input type="text" bind:value={newPool.name} class="input" placeholder="e.g., HTB VIP Vouchers" required />
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1.5">Platform (Optional)</label>
+                    <input type="text" bind:value={newPool.platform} class="input" placeholder="e.g., HackTheBox" />
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1.5">Description (Optional)</label>
+                    <textarea bind:value={newPool.description} class="input" rows="2" placeholder="Notes about this pool"></textarea>
+                </div>
+            </div>
+
+            <div class="px-6 py-4 border-t border-border flex justify-end gap-3">
+                <button onclick={() => showPoolModal = false} class="btn btn-ghost">Cancel</button>
+                <button onclick={createVoucherPool} disabled={creatingPool || !newPool.name.trim()} class="btn btn-primary">
+                    {creatingPool ? 'Creating...' : 'Create Pool'}
+                </button>
             </div>
         </div>
     </div>

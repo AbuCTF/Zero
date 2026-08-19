@@ -89,6 +89,7 @@ class CampaignStatus(str, enum.Enum):
     DRAFT = "draft"
     SCHEDULED = "scheduled"
     SENDING = "sending"
+    PAUSED = "paused"
     SENT = "sent"
     CANCELLED = "cancelled"
 
@@ -803,13 +804,14 @@ class CertificateTemplate(TimestampMixin, Base):
     id: Mapped[UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid4
     )
-    event_id: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("events.id"), nullable=False
+    # Can be global (event_id = null) or event-specific
+    event_id: Mapped[Optional[UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("events.id"), nullable=True
     )
-    
+
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text)
-    
+
     # Template file
     template_file: Mapped[str] = mapped_column(String(500), nullable=False)
     # Path relative to storage
@@ -840,7 +842,7 @@ class CertificateTemplate(TimestampMixin, Base):
     is_default: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     
     # Relationships
-    event: Mapped["Event"] = relationship("Event", back_populates="certificate_templates")
+    event: Mapped[Optional["Event"]] = relationship("Event", back_populates="certificate_templates")
     certificates: Mapped[List["Certificate"]] = relationship(
         "Certificate", back_populates="template", lazy="selectin"
     )
