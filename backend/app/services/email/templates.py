@@ -231,17 +231,18 @@ If you didn't register for this event, you can safely ignore this email.
         </div>
         <div class="content">
             <p>Hello <strong>{{ username }}</strong>,</p>
-            <p>Your email has been verified and your account is ready!</p>
-            <p>You can now access the competition platform:</p>
-            <p style="text-align: center; margin: 30px 0;">
-                <a href="{{ ctfd_url }}" class="button">Go to CTF Platform</a>
-            </p>
-            <p><strong>Your credentials:</strong></p>
+            <p>Your email is verified — you're officially registered for <strong>{{ event_name }}</strong>. 🎉</p>
+            <p>Here's what happens next:</p>
             <ul>
-                <li>Username: {{ username }}</li>
-                <li>Password: (the one you set during registration)</li>
+                <li><strong>Join the community.</strong> Announcements, updates, and support all happen on our Discord.</li>
+                <li><strong>Watch your inbox.</strong> We'll send your competition access and everything you need to compete before the event begins.</li>
             </ul>
-            <p>Good luck and have fun!</p>
+            {% if discord_url %}
+            <p style="text-align: center; margin: 30px 0;">
+                <a href="{{ discord_url }}" class="button">Join the Discord</a>
+            </p>
+            {% endif %}
+            <p>See you there!</p>
         </div>
         <div class="footer">
             <p>Questions? {% if discord_url %}<a href="{{ discord_url }}">Join our Discord</a> or {% endif %}Contact the organizers.</p>
@@ -255,15 +256,13 @@ Welcome to {{ event_name }}!
 
 Hello {{ username }},
 
-Your email has been verified and your account is ready!
+Your email is verified — you're officially registered for {{ event_name }}.
 
-You can now access the competition platform at: {{ ctfd_url }}
+What happens next:
+- Join the community: announcements, updates, and support all happen on our Discord{% if discord_url %} ({{ discord_url }}){% endif %}.
+- Watch your inbox: we'll send your competition access and everything you need to compete before the event begins.
 
-Your credentials:
-- Username: {{ username }}
-- Password: (the one you set during registration)
-
-Good luck and have fun!
+See you there!
 
 Questions? {% if discord_url %}Join our Discord at {{ discord_url }} or {% endif %}Contact the organizers.
         """,
