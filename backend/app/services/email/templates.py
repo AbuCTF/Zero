@@ -231,7 +231,7 @@ If you didn't register for this event, you can safely ignore this email.
         </div>
         <div class="content">
             <p>Hello <strong>{{ username }}</strong>,</p>
-            <p>Your email is verified — you're officially registered for <strong>{{ event_name }}</strong>. 🎉</p>
+            <p>Your email is verified - you're officially registered for <strong>{{ event_name }}</strong>.</p>
             <p>Here's what happens next:</p>
             <ul>
                 <li><strong>Join the community.</strong> Announcements, updates, and support all happen on our Discord.</li>
@@ -256,7 +256,7 @@ Welcome to {{ event_name }}!
 
 Hello {{ username }},
 
-Your email is verified — you're officially registered for {{ event_name }}.
+Your email is verified - you're officially registered for {{ event_name }}.
 
 What happens next:
 - Join the community: announcements, updates, and support all happen on our Discord{% if discord_url %} ({{ discord_url }}){% endif %}.
