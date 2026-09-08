@@ -175,7 +175,7 @@ DEFAULT_TEMPLATES = {
             <h1>{{ event_name }}</h1>
         </div>
         <div class="content">
-            <p>Hello <strong>{{ username }}</strong>,</p>
+            <p>Hello <strong>{{ name | default(username) }}</strong>,</p>
             <p>Thank you for registering. Please verify your email address by clicking the button below:</p>
             <p style="text-align: center; margin: 30px 0;">
                 <a href="{{ verification_url }}" class="button">Verify Email</a>
@@ -192,7 +192,7 @@ DEFAULT_TEMPLATES = {
 </html>
         """,
         "body_text": """
-Hello {{ username }},
+Hello {{ name | default(username) }},
 
 Thank you for registering for {{ event_name }}. Please verify your email address by visiting this link:
 
@@ -230,7 +230,7 @@ If you didn't register for this event, you can safely ignore this email.
             <h1>Welcome to {{ event_name }}!</h1>
         </div>
         <div class="content">
-            <p>Hello <strong>{{ username }}</strong>,</p>
+            <p>Hello <strong>{{ name | default(username) }}</strong>,</p>
             <p>Your email is verified - you're officially registered for <strong>{{ event_name }}</strong>.</p>
             <p>Here's what happens next:</p>
             <ul>
@@ -254,7 +254,7 @@ If you didn't register for this event, you can safely ignore this email.
         "body_text": """
 Welcome to {{ event_name }}!
 
-Hello {{ username }},
+Hello {{ name | default(username) }},
 
 Your email is verified - you're officially registered for {{ event_name }}.
 

@@ -403,6 +403,7 @@ async def _send_registration_verification_email(
     template = DEFAULT_TEMPLATES["verification"]
     variables = {
         "event_name": event.name,
+        "name": participant.name,
         "username": participant.username,
         "verification_url": verification_url,
     }

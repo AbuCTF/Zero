@@ -879,6 +879,7 @@ async def _send_welcome_email(
     template = DEFAULT_TEMPLATES["welcome"]
     variables = {
         "event_name": event.name,
+        "name": participant.name,
         "username": participant.username,
         "ctfd_url": event_settings.get("site_url") or event.ctfd_url or settings.app_url,
         "discord_url": event_settings.get("discord_url"),
