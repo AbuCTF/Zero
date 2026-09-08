@@ -173,6 +173,14 @@ class ParticipantRegistrationRequest(BaseModel):
     team_name: Optional[str] = None
     team_password: Optional[str] = None
     turnstile_token: Optional[str] = None
+    # Optional profile fields from the public form -> stored in participant.extra_data
+    # (no schema change; JSONB catch-all). Values are stripped + length-capped on save.
+    country: Optional[str] = None
+    discord: Optional[str] = None
+    organization: Optional[str] = None
+    participant_type: Optional[str] = None  # "student" | "professional"
+    referral_code: Optional[str] = None
+    heard_from: Optional[str] = None
 
 
 class RegistrationResponse(BaseModel):
@@ -299,6 +307,22 @@ async def register_for_event(
     # Get client IP
     client_ip = request.client.host if request.client else None
     
+    # Collect optional profile fields into extra_data (only what was provided;
+    # stripped + length-capped since this is a public, cross-origin form)
+    extra: dict = {}
+    if data.team_name:
+        extra["team_name"] = data.team_name
+    for _key, _val, _cap in (
+        ("country", data.country, 64),
+        ("discord", data.discord, 64),
+        ("organization", data.organization, 200),
+        ("participant_type", data.participant_type, 32),
+        ("referral_code", data.referral_code, 64),
+        ("heard_from", data.heard_from, 64),
+    ):
+        if _val and _val.strip():
+            extra[_key] = _val.strip()[:_cap]
+
     # Create participant
     participant = Participant(
         event_id=event_id,
@@ -309,9 +333,7 @@ async def register_for_event(
         registration_ip=client_ip,
         email_verified=False,
         source="registration",
-        extra_data={
-            "team_name": data.team_name,
-        } if data.team_name else {},
+        extra_data=extra,
     )
     
     db.add(participant)

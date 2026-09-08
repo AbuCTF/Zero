@@ -133,7 +133,7 @@ class Settings(BaseSettings):
     # -------------------------------------------------------------------------
     # CORS
     # -------------------------------------------------------------------------
-    cors_origins: str = "http://localhost:3000,http://localhost:5173"
+    cors_origins: str = "http://localhost:3000,http://localhost:5173,https://h7tex.com,https://www.h7tex.com,https://2026.h7tex.com,https://app.h7tex.com"
 
     @property
     def cors_origins_list(self) -> List[str]:
