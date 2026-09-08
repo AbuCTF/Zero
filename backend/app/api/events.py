@@ -19,6 +19,7 @@ from app.database import get_session
 from app.models import Event, EventStatus, Participant, EmailProvider, User
 from app.schemas import EventListResponse, EventResponse
 from app.services.email import EmailMessage, EmailOrchestrator, render_email, render_subject
+from app.utils import discord as discord_oauth
 from app.utils.ratelimit import rate_limit
 from app.utils.security import hash_password
 from app.utils.turnstile import verify_turnstile
@@ -181,6 +182,8 @@ class ParticipantRegistrationRequest(BaseModel):
     participant_type: Optional[str] = None  # "student" | "professional"
     referral_code: Optional[str] = None
     heard_from: Optional[str] = None
+    # Discord OAuth verification: signed token issued by /api/auth/discord/callback
+    discord_verify_token: Optional[str] = None
 
 
 class RegistrationResponse(BaseModel):
@@ -262,6 +265,52 @@ async def register_for_event(
                 detail="Event has reached maximum capacity",
             )
     
+    # Discord identity verification (compulsory when discord_required is on)
+    discord_identity = None
+    if data.discord_verify_token:
+        discord_identity = discord_oauth.read_verify_token(data.discord_verify_token)
+        if not discord_identity:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Discord verification expired or invalid. Please reconnect Discord and try again.",
+            )
+    elif settings.discord_required:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Discord verification is required to register.",
+        )
+
+    # Required profile fields (enforced when discord_required is on)
+    if settings.discord_required:
+        missing = [
+            label
+            for label, val in (
+                ("country", data.country),
+                ("participant type", data.participant_type),
+                ("organization", data.organization),
+            )
+            if not (val or "").strip()
+        ]
+        if missing:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Missing required fields: {', '.join(missing)}",
+            )
+
+    # One Discord account may register only once per event
+    if discord_identity:
+        dup = await db.execute(
+            select(Participant).where(
+                Participant.event_id == event_id,
+                Participant.extra_data["discord_id"].astext == discord_identity["id"],
+            )
+        )
+        if dup.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This Discord account is already registered for this event.",
+            )
+
     # Block organizer/admin emails from registering as participants
     admin_check = await db.execute(
         select(User).where(User.email == data.email.lower())
@@ -322,6 +371,12 @@ async def register_for_event(
     ):
         if _val and _val.strip():
             extra[_key] = _val.strip()[:_cap]
+
+    if discord_identity:
+        extra["discord_id"] = discord_identity["id"]
+        extra["discord_username"] = (discord_identity.get("u") or "")[:64]
+        extra["discord_global_name"] = (discord_identity.get("g") or "")[:64]
+        extra["discord_verified"] = True
 
     # Create participant
     participant = Participant(

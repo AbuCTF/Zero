@@ -90,6 +90,25 @@ class Settings(BaseSettings):
         return bool(self.turnstile_site_key and self.turnstile_secret_key)
 
     # -------------------------------------------------------------------------
+    # Discord OAuth (participant identity verification)
+    # -------------------------------------------------------------------------
+    discord_client_id: str = "1547022816937771028"
+    discord_client_secret: Optional[str] = None
+    discord_redirect_uri: str = "https://app.h7tex.com/api/auth/discord/callback"
+    discord_min_account_age_days: int = 7
+    # Origins allowed to open the OAuth popup and receive its postMessage token.
+    discord_popup_origins: str = (
+        "https://2026.h7tex.com,https://app.h7tex.com,http://localhost:5173,http://localhost:3000"
+    )
+    # When true, registration REQUIRES a valid Discord verification + the profile fields.
+    # Deploy the endpoints with this False, ship the new popup, verify, then flip to True.
+    discord_required: bool = False
+
+    @property
+    def discord_enabled(self) -> bool:
+        return bool(self.discord_client_id and self.discord_client_secret)
+
+    # -------------------------------------------------------------------------
     # Certificates
     # -------------------------------------------------------------------------
     cert_salt: str = Field(default="change-this-salt")

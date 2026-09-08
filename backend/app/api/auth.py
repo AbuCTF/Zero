@@ -12,6 +12,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -49,6 +50,7 @@ from app.schemas import (
     VerifyEmailRequest,
 )
 from app.services.email import EmailMessage, EmailOrchestrator, render_email, render_subject
+from app.utils import discord as discord_oauth
 from app.utils.ratelimit import rate_limit
 from app.utils.security import (
     generate_verification_token,
@@ -832,6 +834,86 @@ async def _send_verification_email(
     )
     db.add(email_log)
     await db.flush()
+
+
+# =============================================================================
+# Discord OAuth — participant identity verification (used by the registration popup)
+# =============================================================================
+
+
+@router.get(
+    "/discord/authorize",
+    dependencies=[Depends(rate_limit("auth:discord-authorize", (15, 60), (100, 3600)))],
+)
+async def discord_authorize(origin: str):
+    """
+    Begin Discord OAuth for registration identity verification.
+
+    ``origin`` is the lander origin that opened the popup; it is validated against an
+    allowlist and signed into the OAuth ``state`` so the callback can postMessage back to it.
+    """
+    if not settings.discord_enabled:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Discord verification is not configured",
+        )
+    if not discord_oauth.popup_origin_allowed(origin):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid origin")
+    state = discord_oauth.make_state(origin)
+    return RedirectResponse(discord_oauth.build_authorize_url(state), status_code=302)
+
+
+@router.get("/discord/callback")
+async def discord_callback(
+    code: Optional[str] = None,
+    state: Optional[str] = None,
+    error: Optional[str] = None,
+):
+    """Discord redirects here; postMessage a verify token (or an error) back to the popup opener."""
+    origin = discord_oauth.read_state(state) if state else None
+    if not origin or not discord_oauth.popup_origin_allowed(origin):
+        return HTMLResponse(
+            discord_oauth.result_html("*", {"type": "discord_error", "error": "invalid_state"}),
+            status_code=400,
+        )
+    if error or not code:
+        return HTMLResponse(
+            discord_oauth.result_html(origin, {"type": "discord_error", "error": error or "no_code"})
+        )
+
+    user = await discord_oauth.exchange_code(code)
+    if not user or not user.get("id"):
+        return HTMLResponse(
+            discord_oauth.result_html(origin, {"type": "discord_error", "error": "exchange_failed"})
+        )
+
+    age = discord_oauth.account_age_days(user["id"])
+    if age is None or age < settings.discord_min_account_age_days:
+        return HTMLResponse(
+            discord_oauth.result_html(
+                origin,
+                {
+                    "type": "discord_error",
+                    "error": "account_too_new",
+                    "min_days": settings.discord_min_account_age_days,
+                },
+            )
+        )
+
+    token = discord_oauth.issue_verify_token(
+        user["id"], user.get("username", ""), user.get("global_name")
+    )
+    return HTMLResponse(
+        discord_oauth.result_html(
+            origin,
+            {
+                "type": "discord_verified",
+                "token": token,
+                "username": user.get("username", ""),
+                "global_name": user.get("global_name") or user.get("username", ""),
+            },
+        )
+    )
 
 
 async def _send_welcome_email(
