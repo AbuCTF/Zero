@@ -1,90 +1,68 @@
 <script lang="ts">
-    import { onMount } from 'svelte';
-    import { goto } from '$app/navigation';
-    import { page } from '$app/stores';
-    import { api } from '$lib/api';
+	import { onMount } from 'svelte';
+	import { goto } from '$app/navigation';
+	import { page } from '$app/stores';
 
-    let loading = $state(true);
-    let error = $state('');
-    let success = $state(false);
+	let loading = $state(true);
+	let error = $state('');
+	let success = $state(false);
 
-    const token = $derived($page.url.searchParams.get('token'));
+	const token = $derived($page.url.searchParams.get('token'));
 
-    onMount(async () => {
-        if (!token) {
-            error = 'No access token provided';
-            loading = false;
-            return;
-        }
-
-        try {
-            const response = await fetch(`/api/participants/verify-magic-link?token=${encodeURIComponent(token)}`, {
-                method: 'POST',
-                credentials: 'include'
-            });
-            
-            const data = await response.json();
-            
-            if (response.ok && data.success) {
-                success = true;
-                // Redirect to portal after a moment
-                setTimeout(() => {
-                    goto('/portal');
-                }, 1500);
-            } else {
-                error = data.detail || 'Invalid or expired access link';
-            }
-        } catch (e: any) {
-            error = e.message || 'Failed to verify access link';
-        } finally {
-            loading = false;
-        }
-    });
+	onMount(async () => {
+		if (!token) {
+			error = 'No access token provided.';
+			loading = false;
+			return;
+		}
+		try {
+			const response = await fetch(`/api/participants/verify-magic-link?token=${encodeURIComponent(token)}`, {
+				method: 'POST',
+				credentials: 'include'
+			});
+			const data = await response.json();
+			if (response.ok && data.success) {
+				success = true;
+				setTimeout(() => goto('/portal'), 1400);
+			} else {
+				error = data.detail || 'Invalid or expired access link.';
+			}
+		} catch (e: any) {
+			error = e.message || 'Failed to verify access link.';
+		} finally {
+			loading = false;
+		}
+	});
 </script>
 
-<svelte:head>
-    <title>Verifying Access - ZeroPool</title>
-</svelte:head>
+<svelte:head><title>Signing in · H7CTF Portal</title></svelte:head>
 
-<div class="min-h-screen flex flex-col">
-    <header class="border-b border-border">
-        <div class="container mx-auto px-4 py-4">
-            <a href="/" class="text-xl font-semibold">ZeroPool</a>
-        </div>
-    </header>
+<div class="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-4 py-10">
+	<div class="pointer-events-none absolute left-1/2 top-[-10%] h-[440px] w-[760px] -translate-x-1/2 rounded-full bg-emerald-500/[0.07] blur-[130px]"></div>
 
-    <main class="flex-1 flex items-center justify-center p-4">
-        <div class="w-full max-w-md text-center">
-            {#if loading}
-                <div class="card p-8">
-                    <div class="w-16 h-16 mx-auto mb-4 border-4 border-primary border-t-transparent rounded-full animate-spin"></div>
-                    <h2 class="text-lg font-semibold mb-2">Verifying Access</h2>
-                    <p class="text-foreground-muted text-sm">Please wait...</p>
-                </div>
-            {:else if success}
-                <div class="card p-8">
-                    <div class="w-16 h-16 mx-auto mb-4 bg-success/20 rounded-full flex items-center justify-center">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                        </svg>
-                    </div>
-                    <h2 class="text-lg font-semibold mb-2 text-success">Access Verified!</h2>
-                    <p class="text-foreground-muted text-sm">Redirecting to your portal...</p>
-                </div>
-            {:else}
-                <div class="card p-8">
-                    <div class="w-16 h-16 mx-auto mb-4 bg-destructive/20 rounded-full flex items-center justify-center">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-destructive" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                    </div>
-                    <h2 class="text-lg font-semibold mb-2 text-destructive">Access Failed</h2>
-                    <p class="text-foreground-muted text-sm mb-4">{error}</p>
-                    <a href="/portal/login" class="btn btn-primary">
-                        Request New Link
-                    </a>
-                </div>
-            {/if}
-        </div>
-    </main>
+	<div class="relative w-full max-w-md text-center">
+		<div class="surface p-8">
+			<div class="accent-bar"></div>
+			{#if loading}
+				<div class="mx-auto flex h-14 w-14 items-center justify-center">
+					<span class="h-9 w-9 animate-spin rounded-full border-2 border-emerald-500/25 border-t-emerald-400"></span>
+				</div>
+				<h2 class="mt-4 text-lg font-semibold text-foreground">Signing you in</h2>
+				<p class="mt-1.5 text-sm text-foreground-muted">One moment…</p>
+			{:else if success}
+				<div class="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-400 ring-1 ring-inset ring-emerald-500/20">
+					<svg class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
+				</div>
+				<h2 class="mt-4 text-lg font-semibold text-foreground">You're in</h2>
+				<p class="mt-1.5 text-sm text-foreground-muted">Taking you to your dashboard…</p>
+			{:else}
+				<div class="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-destructive/10 text-destructive ring-1 ring-inset ring-destructive/20">
+					<svg class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+				</div>
+				<h2 class="mt-4 text-lg font-semibold text-foreground">Link didn't work</h2>
+				<p class="mx-auto mt-1.5 max-w-xs text-sm leading-relaxed text-foreground-muted">{error}</p>
+				<a href="/portal/login" class="btn-accent mt-5 inline-flex">Request a new link</a>
+			{/if}
+		</div>
+	</div>
 </div>

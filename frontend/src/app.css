@@ -303,6 +303,46 @@
 	.tab.active {
 		@apply text-foreground border-foreground;
 	}
+
+	/* ===== REFINED PORTAL SURFACES (H7 Terminal · emerald accent) ===== */
+	.surface {
+		@apply relative overflow-hidden rounded-xl border border-white/[0.07];
+		background:
+			radial-gradient(130% 130% at 100% 0%, hsl(152 55% 45% / 0.06), transparent 55%),
+			linear-gradient(180deg, hsl(0 0% 100% / 0.025), transparent 42%),
+			hsl(var(--card));
+	}
+	.surface-plain {
+		@apply relative overflow-hidden rounded-xl border border-white/[0.07];
+		background: linear-gradient(180deg, hsl(0 0% 100% / 0.02), transparent 42%), hsl(var(--card));
+	}
+	.surface-link {
+		@apply transition-all duration-200 hover:border-emerald-500/30 hover:shadow-[0_0_0_1px_hsl(152_60%_45%_/_0.15)];
+	}
+	.accent-bar {
+		@apply pointer-events-none absolute inset-x-0 top-0 h-px;
+		background: linear-gradient(90deg, transparent, hsl(152 62% 52% / 0.7), transparent);
+	}
+	.chip {
+		@apply inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium;
+		font-family: 'IBM Plex Mono', monospace;
+	}
+	.chip-ok {
+		@apply chip border-emerald-500/25 bg-emerald-500/10 text-emerald-400;
+	}
+	.chip-warn {
+		@apply chip border-amber-500/25 bg-amber-500/10 text-amber-400;
+	}
+	.chip-muted {
+		@apply chip border-white/10 bg-white/[0.04] text-foreground-muted;
+	}
+	.btn-accent {
+		@apply btn bg-emerald-500 text-emerald-950 hover:bg-emerald-400 shadow-sm;
+	}
+	.eyebrow {
+		@apply text-[11px] font-semibold uppercase tracking-[0.14em] text-foreground-muted;
+		font-family: 'IBM Plex Mono', monospace;
+	}
 }
 
 @layer utilities {

@@ -72,64 +72,71 @@
 
 <svelte:head><title>Profile · H7CTF Portal</title></svelte:head>
 
-<div class="page-header">
-	<h1 class="text-display">Profile</h1>
-	<p class="page-subtitle">Your details and verified identity.</p>
+<div class="mb-6">
+	<div class="eyebrow">Account</div>
+	<h1 class="mt-1 text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">Profile</h1>
+	<p class="mt-1 text-sm text-foreground-muted">Your details and verified identity.</p>
 </div>
 
 {#if loading}
-	<div class="space-y-4">
-		<div class="skeleton h-24 w-full rounded-lg"></div>
-		<div class="skeleton h-64 w-full rounded-lg"></div>
+	<div class="space-y-5">
+		<div class="skeleton h-24 w-full rounded-xl"></div>
+		<div class="skeleton h-40 w-full rounded-xl"></div>
+		<div class="skeleton h-64 w-full rounded-xl"></div>
 	</div>
 {:else if participant}
-	<div class="space-y-6">
+	<div class="fade-in space-y-5">
 		<!-- Identity header -->
-		<div class="card flex items-center gap-4">
-			<div class="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-accent text-xl font-medium text-foreground">
-				{initial}
-			</div>
-			<div class="min-w-0">
-				<div class="truncate text-lg font-semibold text-foreground">
-					{name || participant.username || 'Participant'}
+		<section class="surface p-6">
+			<div class="accent-bar"></div>
+			<div class="flex items-center gap-4 sm:gap-5">
+				<div class="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/10 text-2xl font-semibold text-emerald-400 ring-1 ring-inset ring-emerald-500/20">
+					{initial}
 				</div>
-				<div class="truncate text-sm text-foreground-muted">{participant.email}</div>
+				<div class="min-w-0">
+					<div class="truncate text-lg font-semibold text-foreground">
+						{name || participant.username || 'Participant'}
+					</div>
+					<div class="truncate text-sm text-foreground-muted">{participant.email}</div>
+				</div>
 			</div>
-		</div>
+		</section>
 
 		<!-- Verified identity (read-only) -->
-		<div class="card">
-			<div class="text-label mb-4">Verified identity</div>
-			<div class="data-row">
-				<span class="data-label">Email</span>
-				<span class="flex items-center gap-2">
-					<span class="data-value">{participant.email}</span>
-					{#if participant.email_verified}
-						<span class="badge-success">Verified</span>
-					{:else}
-						<span class="badge-warning">Unverified</span>
-					{/if}
-				</span>
+		<section class="surface-plain p-6">
+			<div class="eyebrow mb-4">Verified identity</div>
+			<div class="divide-y divide-white/[0.06]">
+				<div class="flex items-center justify-between gap-3 py-3">
+					<span class="text-sm text-foreground-muted">Email</span>
+					<span class="flex min-w-0 items-center gap-2.5">
+						<span class="truncate text-sm font-medium text-foreground text-mono">{participant.email}</span>
+						{#if participant.email_verified}
+							<span class="chip-ok shrink-0"><span class="h-1.5 w-1.5 rounded-full bg-emerald-400"></span> Verified</span>
+						{:else}
+							<span class="chip-warn shrink-0">Unverified</span>
+						{/if}
+					</span>
+				</div>
+				<div class="flex items-center justify-between gap-3 py-3">
+					<span class="text-sm text-foreground-muted">Discord</span>
+					<span class="flex min-w-0 items-center gap-2.5">
+						{#if discordHandle}
+							<span class="truncate text-sm font-medium text-foreground text-mono">@{discordHandle}</span>
+							<span class="chip-ok shrink-0"><span class="h-1.5 w-1.5 rounded-full bg-emerald-400"></span> Connected</span>
+						{:else}
+							<span class="text-sm text-foreground-muted">Not linked</span>
+						{/if}
+					</span>
+				</div>
 			</div>
-			<div class="data-row">
-				<span class="data-label">Discord</span>
-				<span class="flex items-center gap-2">
-					{#if discordHandle}
-						<span class="data-value">@{discordHandle}</span>
-						<span class="badge-success">Connected</span>
-					{:else}
-						<span class="data-value text-foreground-muted">Not linked</span>
-					{/if}
-				</span>
-			</div>
-			<p class="mt-3 text-xs text-foreground-muted">
-				Email and Discord are verified at registration and can't be changed here.
+			<p class="mt-4 text-xs leading-relaxed text-foreground-muted">
+				Your email and Discord are verified at registration and can't be changed here.
 			</p>
-		</div>
+		</section>
 
 		<!-- Editable details -->
-		<div class="card">
-			<div class="text-label mb-4">Your details</div>
+		<section class="surface-plain p-6">
+			<div class="eyebrow mb-4">Your details</div>
 			<div class="space-y-4">
 				<div>
 					<label for="name" class="input-label">Full name</label>
@@ -155,16 +162,16 @@
 				</div>
 			</div>
 
-			<div class="mt-5 flex flex-wrap items-center gap-3">
-				<button class="btn-primary" onclick={save} disabled={saving || !dirty}>
+			<div class="mt-6 flex flex-wrap items-center gap-3 border-t border-white/[0.06] pt-5">
+				<button class="btn-accent" onclick={save} disabled={saving || !dirty}>
 					{saving ? 'Saving…' : 'Save changes'}
 				</button>
 				{#if message}
-					<span class="text-sm {message.type === 'success' ? 'text-success' : 'text-destructive'}">
+					<span class="text-sm {message.type === 'success' ? 'text-emerald-400' : 'text-destructive'}">
 						{message.text}
 					</span>
 				{/if}
 			</div>
-		</div>
+		</section>
 	</div>
 {/if}

@@ -52,49 +52,51 @@
 
 {#snippet icon(name: string)}
 	{#if name === 'home'}
-		<svg class="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
+		<svg class="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7"><path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" /></svg>
 	{:else if name === 'user'}
-		<svg class="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
+		<svg class="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
 	{:else if name === 'gift'}
-		<svg class="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" /></svg>
+		<svg class="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" /></svg>
 	{:else if name === 'document'}
-		<svg class="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+		<svg class="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
 	{/if}
 {/snippet}
 
 {#snippet sidebarInner()}
 	<div class="flex h-full flex-col">
-		<div class="flex items-center justify-between border-b border-border px-5 py-[18px]">
+		<div class="flex items-center justify-between border-b border-white/[0.06] px-5 py-[17px]">
 			<a href="/" class="block"><img src="/logo.png" alt="ZeroPool" class="h-7 w-auto" /></a>
-			<button
-				class="btn-ghost btn-sm !px-1.5 lg:hidden"
-				onclick={() => (sidebarOpen = false)}
-				aria-label="Close menu"
-			>
+			<button class="btn-ghost btn-sm !px-1.5 lg:hidden" onclick={() => (sidebarOpen = false)} aria-label="Close menu">
 				<svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
 			</button>
 		</div>
-		<div class="px-5 pb-2 pt-4 text-label">Participant Portal</div>
+		<div class="eyebrow px-5 pb-2 pt-5">Menu</div>
 		<nav class="flex-1 px-3 pb-4">
-			<ul class="space-y-0.5">
+			<ul class="space-y-1">
 				{#each navItems as item}
+					{@const active = isActive(item.href)}
 					<li>
 						<a
 							href={item.href}
 							onclick={() => (sidebarOpen = false)}
-							class="sidebar-link {isActive(item.href) ? 'active' : ''}"
+							class="relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-all duration-150 {active
+								? 'bg-emerald-500/[0.08] text-emerald-400'
+								: 'text-foreground-muted hover:bg-white/[0.03] hover:text-foreground'}"
 						>
+							{#if active}
+								<span class="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-emerald-400"></span>
+							{/if}
 							{@render icon(item.icon)}
-							{item.label}
+							<span class="font-medium">{item.label}</span>
 						</a>
 					</li>
 				{/each}
 			</ul>
 		</nav>
 		{#if participant}
-			<div class="border-t border-border p-3">
-				<div class="flex items-center gap-3 px-2 py-1.5">
-					<div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-sm font-medium text-foreground">
+			<div class="border-t border-white/[0.06] p-3">
+				<div class="flex items-center gap-3 rounded-lg px-2 py-2">
+					<div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-sm font-semibold text-emerald-400 ring-1 ring-inset ring-emerald-500/20">
 						{initial}
 					</div>
 					<div class="min-w-0 flex-1">
@@ -104,9 +106,12 @@
 						<div class="truncate text-xs text-foreground-muted">{participant.email}</div>
 					</div>
 				</div>
-				<button onclick={handleLogout} class="sidebar-link mt-1 w-full">
-					<svg class="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
-					Sign out
+				<button
+					onclick={handleLogout}
+					class="mt-1 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-foreground-muted transition-all duration-150 hover:bg-white/[0.03] hover:text-foreground"
+				>
+					<svg class="h-[18px] w-[18px] shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7"><path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+					<span class="font-medium">Sign out</span>
 				</button>
 			</div>
 		{/if}
@@ -115,39 +120,38 @@
 
 {#if loading}
 	<div class="flex min-h-screen items-center justify-center bg-background">
-		<div class="text-mono animate-pulse text-sm text-foreground-muted">Loading…</div>
+		<div class="flex items-center gap-2.5 text-sm text-foreground-muted">
+			<span class="h-4 w-4 animate-spin rounded-full border-2 border-emerald-500/30 border-t-emerald-400"></span>
+			<span class="text-mono">Loading…</span>
+		</div>
 	</div>
 {:else}
 	<div class="min-h-screen bg-background">
 		<!-- Mobile top bar -->
-		<header class="sticky top-0 z-30 flex items-center justify-between border-b border-border bg-card px-4 py-3 lg:hidden">
+		<header class="sticky top-0 z-30 flex items-center justify-between border-b border-white/[0.06] bg-card/80 px-4 py-3 backdrop-blur-xl lg:hidden">
 			<button class="btn-ghost btn-sm !px-1.5" onclick={() => (sidebarOpen = true)} aria-label="Open menu">
 				<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" /></svg>
 			</button>
 			<img src="/logo.png" alt="ZeroPool" class="h-6 w-auto" />
-			<div class="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-xs font-medium">{initial}</div>
+			<div class="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/10 text-xs font-semibold text-emerald-400 ring-1 ring-inset ring-emerald-500/20">{initial}</div>
 		</header>
 
 		<!-- Desktop sidebar -->
-		<aside class="fixed inset-y-0 left-0 hidden w-64 flex-col border-r border-border bg-card lg:flex">
+		<aside class="fixed inset-y-0 left-0 hidden w-64 flex-col border-r border-white/[0.06] bg-card lg:flex">
 			{@render sidebarInner()}
 		</aside>
 
 		<!-- Mobile drawer -->
 		{#if sidebarOpen}
-			<button
-				class="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden"
-				onclick={() => (sidebarOpen = false)}
-				aria-label="Close menu"
-			></button>
-			<aside class="fade-in fixed inset-y-0 left-0 z-50 w-64 border-r border-border bg-card lg:hidden">
+			<button class="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden" onclick={() => (sidebarOpen = false)} aria-label="Close menu"></button>
+			<aside class="fade-in fixed inset-y-0 left-0 z-50 w-64 border-r border-white/[0.06] bg-card lg:hidden">
 				{@render sidebarInner()}
 			</aside>
 		{/if}
 
 		<!-- Main content -->
 		<main class="lg:pl-64">
-			<div class="mx-auto max-w-4xl px-4 py-6 sm:px-6 lg:px-8 lg:py-10">
+			<div class="mx-auto max-w-4xl px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
 				{@render children()}
 			</div>
 		</main>
