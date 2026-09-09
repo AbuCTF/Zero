@@ -274,14 +274,14 @@ async def register_for_event(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Discord verification expired or invalid. Please reconnect Discord and try again.",
             )
-    elif settings.discord_required:
+    elif get_settings().discord_required:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Discord verification is required to register.",
         )
 
     # Required profile fields (enforced when discord_required is on)
-    if settings.discord_required:
+    if get_settings().discord_required:
         missing = [
             label
             for label, val in (
