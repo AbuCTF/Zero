@@ -413,7 +413,7 @@ export const participant = {
 	profile: () =>
 		request<Participant>('/participants/me'),
 
-	updateProfile: (data: Partial<{ name: string; password: string }>) =>
+	updateProfile: (data: Partial<{ name: string; password: string; metadata: Record<string, any> }>) =>
 		request<Participant>('/participants/me', {
 			method: 'PATCH',
 			body: JSON.stringify(data)

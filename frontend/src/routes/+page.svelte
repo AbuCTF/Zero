@@ -91,14 +91,11 @@
 					<img src="/logo.png" alt="ZeroPool" class="h-9 w-auto group-hover:scale-105 transition-transform" />
 				</a>
 				<div class="flex items-center gap-1 sm:gap-2">
-					<a href="/portal/login" class="px-2 sm:px-4 py-2 text-xs sm:text-sm font-medium text-foreground-muted hover:text-foreground transition-colors font-mono">
-						Portal
-					</a>
-					<a href="/verify" class="hidden sm:block px-4 py-2 text-sm font-medium text-foreground-muted hover:text-foreground transition-colors font-mono">
+					<a href="/verify" class="px-2 sm:px-4 py-2 text-xs sm:text-sm font-medium text-foreground-muted hover:text-foreground transition-colors font-mono">
 						Verify
 					</a>
-					<a href="/admin" class="ml-1 sm:ml-2 px-3 sm:px-5 py-2 rounded-full text-xs sm:text-sm font-semibold bg-foreground text-background hover:bg-foreground/90 transition-all font-mono">
-						Admin
+					<a href="/portal/login" class="ml-1 sm:ml-2 px-3 sm:px-5 py-2 rounded-full text-xs sm:text-sm font-semibold bg-foreground text-background hover:bg-foreground/90 transition-all font-mono">
+						Portal
 					</a>
 				</div>
 			</div>
@@ -117,8 +114,8 @@
 			</p>
 			
 			<div class="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
-				<a href="/admin" class="group px-8 py-3.5 rounded-full text-base font-semibold bg-primary text-background hover:bg-primary/90 transition-all shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/30 font-mono flex items-center gap-2">
-					Get Started
+				<a href="/portal/login" class="group px-8 py-3.5 rounded-full text-base font-semibold bg-primary text-background hover:bg-primary/90 transition-all shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/30 font-mono flex items-center gap-2">
+					Open Portal
 					<svg class="w-4 h-4 group-hover:translate-x-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 8l4 4m0 0l-4 4m4-4H3"/>
 					</svg>
@@ -305,13 +302,7 @@
 					</svg>
 				</div>
 				<h2 class="text-xl font-semibold text-foreground mb-2 font-mono">No Events Yet</h2>
-				<p class="text-foreground-muted mb-6">There are no public events at the moment. Check back soon!</p>
-				<a href="/admin" class="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-primary text-background text-sm font-semibold hover:bg-primary/90 transition-colors font-mono">
-					Create an Event
-					<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
-					</svg>
-				</a>
+				<p class="text-foreground-muted">There are no public events at the moment. Check back soon!</p>
 			</div>
 		</section>
 	{/if}
@@ -326,7 +317,6 @@
 				<div class="flex items-center gap-6 text-sm font-mono">
 					<a href="/portal/login" class="text-foreground-muted hover:text-foreground transition-colors">Portal</a>
 					<a href="/verify" class="text-foreground-muted hover:text-foreground transition-colors">Verify</a>
-					<a href="/admin" class="text-foreground-muted hover:text-foreground transition-colors">Admin</a>
 				</div>
 			</div>
 			<div class="mt-8 pt-6 border-t border-border/30 text-center">

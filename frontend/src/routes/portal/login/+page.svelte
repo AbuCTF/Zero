@@ -60,7 +60,7 @@
         <div class="w-full max-w-md">
             <div class="text-center mb-8">
                 <h1 class="text-2xl font-bold mb-2">Participant Portal</h1>
-                <p class="text-muted-foreground">
+                <p class="text-foreground-muted">
                     Access your prizes and certificates
                 </p>
             </div>
@@ -74,7 +74,7 @@
                             </svg>
                         </div>
                         <h2 class="text-lg font-semibold mb-2">Check Your Email</h2>
-                        <p class="text-muted-foreground text-sm">
+                        <p class="text-foreground-muted text-sm">
                             We've sent a magic link to <strong>{email}</strong>.
                             Click the link in the email to access your portal.
                         </p>
@@ -84,7 +84,7 @@
                     <div class="space-y-4">
                         <div class="text-center">
                             <h2 class="text-lg font-semibold mb-2">Select Event</h2>
-                            <p class="text-muted-foreground text-sm">
+                            <p class="text-foreground-muted text-sm">
                                 You're registered for multiple events. Which one would you like to access?
                             </p>
                         </div>
@@ -97,7 +97,7 @@
                                     class="w-full p-4 text-left rounded-lg border border-border hover:border-primary hover:bg-primary/5 transition-colors disabled:opacity-50"
                                 >
                                     <div class="font-medium">{event.name}</div>
-                                    <div class="text-xs text-muted-foreground mt-0.5">{event.slug}</div>
+                                    <div class="text-xs text-foreground-muted mt-0.5">{event.slug}</div>
                                 </button>
                             {/each}
                         </div>
@@ -129,7 +129,7 @@
                                 placeholder="you@example.com"
                                 required
                             />
-                            <p class="text-xs text-muted-foreground mt-1.5">
+                            <p class="text-xs text-foreground-muted mt-1.5">
                                 Enter the email you used to register for an event
                             </p>
                         </div>
@@ -145,7 +145,7 @@
                 {/if}
             </div>
 
-            <p class="text-center text-sm text-muted-foreground mt-6">
+            <p class="text-center text-sm text-foreground-muted mt-6">
                 <a href="/" class="hover:text-foreground">Back to Home</a>
             </p>
         </div>
