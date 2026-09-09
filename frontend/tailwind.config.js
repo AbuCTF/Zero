@@ -49,7 +49,8 @@ export default {
 					focus: 'hsl(var(--input-focus) / <alpha-value>)'
 				},
 				ring: 'hsl(var(--ring) / <alpha-value>)',
-				muted: 'hsl(var(--foreground-muted) / <alpha-value>)'
+				muted: 'hsl(var(--foreground-muted) / <alpha-value>)',
+				brass: 'hsl(var(--brass) / <alpha-value>)'
 			},
 			fontFamily: {
 				sans: [

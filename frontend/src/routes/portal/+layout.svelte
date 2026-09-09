@@ -80,11 +80,11 @@
 							href={item.href}
 							onclick={() => (sidebarOpen = false)}
 							class="relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-all duration-150 {active
-								? 'bg-emerald-500/[0.08] text-emerald-400'
+								? 'bg-brass/[0.08] text-brass'
 								: 'text-foreground-muted hover:bg-white/[0.03] hover:text-foreground'}"
 						>
 							{#if active}
-								<span class="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-emerald-400"></span>
+								<span class="absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-brass"></span>
 							{/if}
 							{@render icon(item.icon)}
 							<span class="font-medium">{item.label}</span>
@@ -96,7 +96,7 @@
 		{#if participant}
 			<div class="border-t border-white/[0.06] p-3">
 				<div class="flex items-center gap-3 rounded-lg px-2 py-2">
-					<div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-sm font-semibold text-emerald-400 ring-1 ring-inset ring-emerald-500/20">
+					<div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brass/10 text-sm font-semibold text-brass ring-1 ring-inset ring-brass/20">
 						{initial}
 					</div>
 					<div class="min-w-0 flex-1">
@@ -121,7 +121,7 @@
 {#if loading}
 	<div class="flex min-h-screen items-center justify-center bg-background">
 		<div class="flex items-center gap-2.5 text-sm text-foreground-muted">
-			<span class="h-4 w-4 animate-spin rounded-full border-2 border-emerald-500/30 border-t-emerald-400"></span>
+			<span class="h-4 w-4 animate-spin rounded-full border-2 border-brass/30 border-t-brass"></span>
 			<span class="text-mono">Loading…</span>
 		</div>
 	</div>
@@ -133,7 +133,7 @@
 				<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" /></svg>
 			</button>
 			<img src="/logo.png" alt="ZeroPool" class="h-6 w-auto" />
-			<div class="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/10 text-xs font-semibold text-emerald-400 ring-1 ring-inset ring-emerald-500/20">{initial}</div>
+			<div class="flex h-7 w-7 items-center justify-center rounded-lg bg-brass/10 text-xs font-semibold text-brass ring-1 ring-inset ring-brass/20">{initial}</div>
 		</header>
 
 		<!-- Desktop sidebar -->

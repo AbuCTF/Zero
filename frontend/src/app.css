@@ -30,6 +30,7 @@
 		--input: 0 0% 100%;
 		--input-focus: 0 0% 94%;
 		--ring: 0 0% 12%;
+		--brass: 36 34% 44%;
 		--radius: 6px;
 	}
 
@@ -58,6 +59,7 @@
 		--input: 0 0% 8%;
 		--input-focus: 0 0% 12%;
 		--ring: 0 0% 92%;
+		--brass: 36 27% 63%;
 	}
 
 	* {
@@ -304,40 +306,40 @@
 		@apply text-foreground border-foreground;
 	}
 
-	/* ===== REFINED PORTAL SURFACES (H7 Terminal · emerald accent) ===== */
+	/* ===== REFINED PORTAL SURFACES (elegant, stoic · muted brass accent) ===== */
 	.surface {
-		@apply relative overflow-hidden rounded-xl border border-white/[0.07];
+		@apply relative overflow-hidden rounded-xl border border-white/[0.06];
 		background:
-			radial-gradient(130% 130% at 100% 0%, hsl(152 55% 45% / 0.06), transparent 55%),
-			linear-gradient(180deg, hsl(0 0% 100% / 0.025), transparent 42%),
+			radial-gradient(130% 130% at 100% 0%, hsl(36 30% 55% / 0.05), transparent 58%),
+			linear-gradient(180deg, hsl(36 22% 88% / 0.022), transparent 44%),
 			hsl(var(--card));
 	}
 	.surface-plain {
-		@apply relative overflow-hidden rounded-xl border border-white/[0.07];
-		background: linear-gradient(180deg, hsl(0 0% 100% / 0.02), transparent 42%), hsl(var(--card));
+		@apply relative overflow-hidden rounded-xl border border-white/[0.06];
+		background: linear-gradient(180deg, hsl(36 22% 88% / 0.016), transparent 44%), hsl(var(--card));
 	}
 	.surface-link {
-		@apply transition-all duration-200 hover:border-emerald-500/30 hover:shadow-[0_0_0_1px_hsl(152_60%_45%_/_0.15)];
+		@apply transition-all duration-200 hover:border-brass/25 hover:shadow-[0_0_0_1px_hsl(36_28%_58%_/_0.1)];
 	}
 	.accent-bar {
 		@apply pointer-events-none absolute inset-x-0 top-0 h-px;
-		background: linear-gradient(90deg, transparent, hsl(152 62% 52% / 0.7), transparent);
+		background: linear-gradient(90deg, transparent, hsl(36 30% 60% / 0.45), transparent);
 	}
 	.chip {
 		@apply inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium;
 		font-family: 'IBM Plex Mono', monospace;
 	}
 	.chip-ok {
-		@apply chip border-emerald-500/25 bg-emerald-500/10 text-emerald-400;
+		@apply chip border-brass/25 bg-brass/[0.08] text-brass;
 	}
 	.chip-warn {
-		@apply chip border-amber-500/25 bg-amber-500/10 text-amber-400;
+		@apply chip border-white/[0.09] bg-white/[0.04] text-foreground-muted;
 	}
 	.chip-muted {
-		@apply chip border-white/10 bg-white/[0.04] text-foreground-muted;
+		@apply chip border-white/[0.07] bg-white/[0.02] text-foreground-muted;
 	}
 	.btn-accent {
-		@apply btn bg-emerald-500 text-emerald-950 hover:bg-emerald-400 shadow-sm;
+		@apply btn bg-primary text-primary-foreground shadow-sm hover:bg-primary-hover;
 	}
 	.eyebrow {
 		@apply text-[11px] font-semibold uppercase tracking-[0.14em] text-foreground-muted;

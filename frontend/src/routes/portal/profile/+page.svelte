@@ -90,7 +90,7 @@
 		<section class="surface p-6">
 			<div class="accent-bar"></div>
 			<div class="flex items-center gap-4 sm:gap-5">
-				<div class="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/10 text-2xl font-semibold text-emerald-400 ring-1 ring-inset ring-emerald-500/20">
+				<div class="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-brass/10 text-2xl font-semibold text-brass ring-1 ring-inset ring-brass/20">
 					{initial}
 				</div>
 				<div class="min-w-0">
@@ -111,7 +111,7 @@
 					<span class="flex min-w-0 items-center gap-2.5">
 						<span class="truncate text-sm font-medium text-foreground text-mono">{participant.email}</span>
 						{#if participant.email_verified}
-							<span class="chip-ok shrink-0"><span class="h-1.5 w-1.5 rounded-full bg-emerald-400"></span> Verified</span>
+							<span class="chip-ok shrink-0"><span class="h-1.5 w-1.5 rounded-full bg-brass"></span> Verified</span>
 						{:else}
 							<span class="chip-warn shrink-0">Unverified</span>
 						{/if}
@@ -122,7 +122,7 @@
 					<span class="flex min-w-0 items-center gap-2.5">
 						{#if discordHandle}
 							<span class="truncate text-sm font-medium text-foreground text-mono">@{discordHandle}</span>
-							<span class="chip-ok shrink-0"><span class="h-1.5 w-1.5 rounded-full bg-emerald-400"></span> Connected</span>
+							<span class="chip-ok shrink-0"><span class="h-1.5 w-1.5 rounded-full bg-brass"></span> Connected</span>
 						{:else}
 							<span class="text-sm text-foreground-muted">Not linked</span>
 						{/if}
@@ -167,7 +167,7 @@
 					{saving ? 'Saving…' : 'Save changes'}
 				</button>
 				{#if message}
-					<span class="text-sm {message.type === 'success' ? 'text-emerald-400' : 'text-destructive'}">
+					<span class="text-sm {message.type === 'success' ? 'text-brass' : 'text-destructive'}">
 						{message.text}
 					</span>
 				{/if}

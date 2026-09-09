@@ -60,7 +60,7 @@
 {#snippet statusChip(kind: 'ok' | 'warn' | 'muted', label: string)}
 	<span class={kind === 'ok' ? 'chip-ok' : kind === 'warn' ? 'chip-warn' : 'chip-muted'}>
 		{#if kind !== 'muted'}
-			<span class="h-1.5 w-1.5 rounded-full {kind === 'ok' ? 'bg-emerald-400' : 'bg-amber-400'}"></span>
+			<span class="h-1.5 w-1.5 rounded-full {kind === 'ok' ? 'bg-brass' : 'bg-foreground-muted'}"></span>
 		{/if}
 		{label}
 	</span>
@@ -68,7 +68,7 @@
 
 {#snippet tile(href: string, title: string, sub: string, path: string)}
 	<a href={href} class="surface-plain surface-link group flex items-center gap-3 p-4">
-		<span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/[0.04] text-foreground-muted transition-colors group-hover:bg-emerald-500/10 group-hover:text-emerald-400">
+		<span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/[0.04] text-foreground-muted transition-colors group-hover:bg-brass/10 group-hover:text-brass">
 			<svg class="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7"><path stroke-linecap="round" stroke-linejoin="round" d={path} /></svg>
 		</span>
 		<span class="min-w-0">
@@ -89,7 +89,7 @@
 		<section class="surface p-6 sm:p-7">
 			<div class="accent-bar"></div>
 			<div class="flex items-center gap-4 sm:gap-5">
-				<div class="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-emerald-500/10 text-xl font-semibold text-emerald-400 ring-1 ring-inset ring-emerald-500/20 sm:h-16 sm:w-16">
+				<div class="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-brass/10 text-xl font-semibold text-brass ring-1 ring-inset ring-brass/20 sm:h-16 sm:w-16">
 					{initial}
 				</div>
 				<div class="min-w-0">
@@ -151,7 +151,7 @@
 								</div>
 								{#if cd}
 									<div class="shrink-0 text-right">
-										<div class="font-mono text-4xl font-semibold leading-none text-emerald-400 sm:text-5xl" style="font-variant-numeric: tabular-nums">{cd.value}</div>
+										<div class="font-mono text-4xl font-semibold leading-none text-brass sm:text-5xl" style="font-variant-numeric: tabular-nums">{cd.value}</div>
 										<div class="eyebrow mt-1.5">{cd.unit} to go</div>
 									</div>
 								{/if}

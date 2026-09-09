@@ -37,7 +37,7 @@
 <svelte:head><title>Sign in · H7CTF Portal</title></svelte:head>
 
 <div class="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-4 py-10">
-	<div class="pointer-events-none absolute left-1/2 top-[-10%] h-[440px] w-[760px] -translate-x-1/2 rounded-full bg-emerald-500/[0.07] blur-[130px]"></div>
+	<div class="pointer-events-none absolute left-1/2 top-[-10%] h-[440px] w-[760px] -translate-x-1/2 rounded-full bg-brass/[0.07] blur-[130px]"></div>
 
 	<div class="relative w-full max-w-md">
 		<div class="mb-8 text-center">
@@ -51,7 +51,7 @@
 
 			{#if sent}
 				<div class="py-2 text-center">
-					<div class="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-400 ring-1 ring-inset ring-emerald-500/20">
+					<div class="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-brass/10 text-brass ring-1 ring-inset ring-brass/20">
 						<svg class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7"><path stroke-linecap="round" stroke-linejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
 					</div>
 					<h2 class="mt-4 text-lg font-semibold text-foreground">Check your email</h2>
