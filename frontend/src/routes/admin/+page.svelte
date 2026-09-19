@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { admin, type DashboardStats } from '$lib/api';
-	import { formatNumber, formatPercent } from '$lib/utils';
+	import { formatNumber } from '$lib/utils';
 	import { onMount } from 'svelte';
 
 	let stats = $state<DashboardStats | null>(null);
@@ -83,7 +83,6 @@
 			{error}
 		</div>
 	{:else if stats}
-		<!-- Stats Grid -->
 		<div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3 mb-8">
 			{#each statCards as card}
 				<div class="card-hover">
@@ -94,7 +93,6 @@
 			{/each}
 		</div>
 
-		<!-- Email Capacity -->
 		<div class="card mb-8">
 			<div class="flex items-center justify-between mb-4">
 				<div>
@@ -119,7 +117,6 @@
 			</div>
 		</div>
 
-		<!-- Quick Actions -->
 		<div class="card">
 			<p class="stat-label mb-4">Quick Actions</p>
 			<div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">

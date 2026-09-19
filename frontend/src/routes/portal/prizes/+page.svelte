@@ -143,7 +143,6 @@
     {/if}
 </div>
 
-<!-- Voucher Modal -->
 {#if showVoucher}
     <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
         <div class="bg-card rounded-xl shadow-xl w-full max-w-md">

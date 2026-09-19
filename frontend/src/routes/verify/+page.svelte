@@ -1,16 +1,11 @@
 <script lang="ts">
 	import { publicApi } from '$lib/api';
 	import { formatDate } from '$lib/utils';
-	import { page } from '$app/stores';
 	import { onMount } from 'svelte';
-	import { goto } from '$app/navigation';
-	import { browser } from '$app/environment';
 
-	// Mode: 'loading', 'email', 'certificate'
 	let mode = $state<'loading' | 'email' | 'certificate'>('loading');
 	let token = $state<string | null>(null);
 
-	// Email verification state
 	let emailVerifying = $state(false);
 	let emailResult = $state<{
 		checked: boolean;
@@ -23,7 +18,6 @@
 		};
 	}>({ checked: false, success: false });
 
-	// Certificate verification state
 	let code = $state('');
 	let result = $state<{
 		checked: boolean;
@@ -36,7 +30,6 @@
 	let loading = $state(false);
 
 	onMount(async () => {
-		// Get URL params on client side
 		const urlParams = new URLSearchParams(window.location.search);
 		token = urlParams.get('token');
 		const codeParam = urlParams.get('code');
@@ -76,7 +69,7 @@
 					message: data.message || 'Email verified successfully!',
 					event: data.event
 				};
-				// Don't auto-redirect - let user read the message and click
+				// no auto-redirect; let the user read and click
 			} else {
 				emailResult = { 
 					checked: true, 
@@ -133,7 +126,6 @@
 		</div>
 
 		{#if mode === 'loading'}
-			<!-- Loading state -->
 			<div class="card">
 				<div class="flex flex-col items-center py-8">
 					<svg class="animate-spin h-8 w-8 text-primary mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -144,7 +136,6 @@
 				</div>
 			</div>
 		{:else if mode === 'email'}
-			<!-- Email Verification -->
 			<div class="card">
 				{#if emailVerifying}
 					<div class="flex flex-col items-center py-8">
@@ -170,7 +161,6 @@
 								{/if}
 							</p>
 							
-							<!-- Action Buttons -->
 							<div class="space-y-3">
 								<a href="/portal" class="btn-primary w-full inline-flex items-center justify-center gap-2">
 									<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -228,7 +218,6 @@
 				{/if}
 			</div>
 		{:else}
-			<!-- Certificate Verification -->
 			<div class="card">
 				<form onsubmit={handleSubmit} class="mb-6">
 					<label for="code" class="block text-sm font-medium text-foreground mb-1.5">

@@ -11,14 +11,12 @@
     let eventStats = $state<EventStats | null>(null);
     let participants = $state<Participant[]>([]);
     let totalParticipants = $state(0);
-    let totalVerified = $state(0);
     let currentPage = $state(1);
     let totalPages = $state(1);
     let perPage = $state(50);
     let loading = $state(true);
     let error = $state('');
 
-    // Participants tab: search / filter / bulk-select / resend
     let participantSearch = $state('');
     let participantFilter = $state<'all' | 'verified' | 'unverified'>('all');
     let searchDebounce: ReturnType<typeof setTimeout> | undefined;
@@ -42,14 +40,12 @@
     let importResult = $state<{ imported: number; updated: number; skipped: number; errors: any[]; job_id?: string; message?: string } | null>(null);
     let importProgress = $state<{ status: string; progress: number; imported: number; updated: number; skipped: number; errors: any[]; total: number } | null>(null);
 
-    // Results import
     let showResultsImportModal = $state(false);
     let resultsFile = $state<File | null>(null);
     let importingResults = $state(false);
     let matchBy = $state<'email' | 'username' | 'name'>('email');
     let resultsImportResult = $state<{ updated: number; not_found: number; skipped: number; errors: any[] } | null>(null);
 
-    // Prize rules and certificate templates
     interface PrizeRule {
         id: string;
         name: string;
@@ -71,7 +67,6 @@
     let certTemplates = $state<CertTemplate[]>([]);
     let loadingPrizes = $state(false);
     let showPrizeRuleModal = $state(false);
-    let editingRule = $state<PrizeRule | null>(null);
     let newRule = $state({
         name: '',
         rank_from: 1,
@@ -82,7 +77,6 @@
         custom_prize_description: ''
     });
 
-    // Voucher pools
     let voucherPools = $state<VoucherPool[]>([]);
     let loadingVoucherPools = $state(false);
     let showPoolModal = $state(false);
@@ -90,11 +84,9 @@
     let newPool = $state({ name: '', description: '', platform: '' });
     let uploadingPoolId = $state<string | null>(null);
     
-    // Manual assignment
     let showAssignModal = $state(false);
     let assigningParticipant = $state<Participant | null>(null);
     
-    // Prizes tab search
     let prizeSearchQuery = $state('');
     let prizeSearchResults = $state<Participant[]>([]);
     let searchingPrize = $state(false);
@@ -137,7 +129,6 @@
             await loadParticipants(1);
             await loadStats();
 
-            // Populate edit form
             editForm = {
                 name: event.name,
                 slug: event.slug,
@@ -171,9 +162,7 @@
             totalParticipants = response.total || 0;
             currentPage = response.page || 1;
             totalPages = response.pages || 1;
-            // Calculate verified count from event stats or estimate
-            totalVerified = event?.verified_count || participants.filter(p => p.email_verified).length;
-            // Drop selections for rows that are no longer on the loaded page
+            // drop selections for rows no longer on the loaded page
             selectedIds = selectedIds.filter(id => participants.some(p => p.id === id));
         } catch (e: any) {
             error = e.message || 'Failed to load participants';
@@ -184,7 +173,7 @@
         try {
             eventStats = await api.admin.events.stats(eventId);
         } catch (e) {
-            // Stats are non-critical for rendering the page
+            // stats are non-critical for rendering the page
             console.error('Failed to load event stats', e);
         }
     }
@@ -258,8 +247,7 @@
         saving = true;
         error = '';
         try {
-            // Sanitize: empty datetime-local inputs bind to '' which the backend
-            // rejects (422); send null instead so the field is treated as unset.
+            // empty datetime-local inputs bind to '' which the backend rejects (422); send null instead
             const payload: any = {
                 ...editForm,
                 registration_open: editForm.registration_open || null,
@@ -268,9 +256,7 @@
                 end_date: editForm.end_date || null,
                 max_participants: editForm.max_participants || null
             };
-            // The API key is never returned by the backend, so the field is blank
-            // unless the admin typed a new one. Don't send a blank value or we'd
-            // overwrite the stored key with an empty string.
+            // api key is never returned by the backend; sending blank would overwrite the stored key
             if (!editForm.ctfd_api_key) {
                 delete payload.ctfd_api_key;
             }
@@ -366,10 +352,8 @@
             }
             
             const result = await response.json();
-            
-            // Check if this is a background job
+
             if (result.job_id) {
-                // Start polling for progress
                 await pollImportProgress(result.job_id);
             } else {
                 importResult = result;
@@ -383,8 +367,8 @@
     }
 
     async function pollImportProgress(jobId: string) {
-        const pollInterval = 1000; // 1 second
-        const maxAttempts = 1800; // 30 minutes max
+        const pollInterval = 1000;
+        const maxAttempts = 1800; // 30 min at 1s each
         let attempts = 0;
         
         while (attempts < maxAttempts) {
@@ -415,8 +399,7 @@
                 } else if (progress.status === 'failed') {
                     throw new Error(progress.error || 'Import failed');
                 }
-                
-                // Wait before next poll
+
                 await new Promise(resolve => setTimeout(resolve, pollInterval));
             } catch (e: any) {
                 error = e.message || 'Failed to fetch import progress';
@@ -501,7 +484,6 @@
         }
     }
 
-    // Prize rules functions
     async function loadPrizeRules() {
         loadingPrizes = true;
         try {
@@ -567,7 +549,6 @@
         }
     }
 
-    // Voucher pool functions
     async function loadVoucherPools() {
         loadingVoucherPools = true;
         try {
@@ -673,7 +654,6 @@
         }
     }
 
-    // Load prize rules when switching to prizes tab
     $effect(() => {
         if (activeTab === 'prizes' && !prizeRulesLoaded && !loadingPrizes) {
             prizeRulesLoaded = true;
@@ -699,7 +679,6 @@
     </div>
 {:else}
     <div class="space-y-6">
-        <!-- Header -->
         <div class="flex items-start justify-between">
             <div>
                 <div class="flex items-center gap-3 mb-1">
@@ -780,7 +759,6 @@
             </div>
         {/if}
 
-        <!-- Tabs -->
         <div class="border-b border-border">
             <nav class="flex gap-6">
                 <button 
@@ -810,7 +788,6 @@
             </nav>
         </div>
 
-        <!-- Tab Content -->
         {#if activeTab === 'overview'}
             <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 <div class="card p-4 group hover:border-border-hover transition-colors">
@@ -941,7 +918,6 @@
                 </div>
             </div>
 
-            <!-- Search / filter / resend controls -->
             <div class="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
                 <div class="relative flex-1">
                     <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-foreground-muted pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
@@ -1119,7 +1095,6 @@
                   </div>
                 </div>
 
-                <!-- Pagination -->
                 {#if totalPages > 1}
                     <div class="flex items-center justify-between mt-4">
                         <div class="text-sm text-foreground-muted">
@@ -1142,7 +1117,6 @@
                                 Prev
                             </button>
                             
-                            <!-- Page numbers -->
                             {#each Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
                                 const start = Math.max(1, Math.min(currentPage - 2, totalPages - 4));
                                 return start + i;
@@ -1177,7 +1151,6 @@
 
         {:else if activeTab === 'prizes'}
             <div class="space-y-6">
-                <!-- Prize Rules Section -->
                 <div class="card p-6">
                     <div class="flex items-center justify-between mb-4">
                         <div>
@@ -1230,7 +1203,6 @@
                     {/if}
                 </div>
 
-                <!-- Voucher Pools Section -->
                 <div class="card p-6">
                     <div class="flex items-center justify-between mb-4">
                         <div>
@@ -1283,14 +1255,12 @@
                     {/if}
                 </div>
 
-                <!-- Manual Assignment Section -->
                 <div class="card p-6">
                     <div class="mb-4">
                         <h3 class="font-medium">Manual Prize Assignment</h3>
                         <p class="text-sm text-foreground-muted">Search for participants to assign prizes manually</p>
                     </div>
 
-                    <!-- Search Box -->
                     <div class="flex gap-2 mb-4">
                         <input
                             type="text"
@@ -1473,7 +1443,6 @@
     </div>
 {/if}
 
-<!-- Import Modal -->
 {#if showImportModal}
     <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
         <div class="bg-card rounded-xl shadow-xl w-full max-w-md">
@@ -1518,7 +1487,6 @@
                         {/if}
                     </div>
                 {:else if importing}
-                    <!-- Progress indicator while importing -->
                     <div class="text-center py-8">
                         <div class="inline-block w-12 h-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin mb-4"></div>
                         <p class="text-sm font-medium">Importing participants...</p>
@@ -1558,7 +1526,6 @@
                             {/if}
                         </label>
                         
-                        <!-- Update existing checkbox -->
                         <label class="flex items-center gap-2 cursor-pointer">
                             <input 
                                 type="checkbox" 
@@ -1602,7 +1569,6 @@
     </div>
 {/if}
 
-<!-- Results Import Modal -->
 {#if showResultsImportModal}
     <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
         <div class="card w-full max-w-md">
@@ -1714,7 +1680,6 @@
     </div>
 {/if}
 
-<!-- Prize Rule Modal -->
 {#if showPrizeRuleModal}
     <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
         <div class="card w-full max-w-md">
@@ -1791,7 +1756,6 @@
     </div>
 {/if}
 
-<!-- New Voucher Pool Modal -->
 {#if showPoolModal}
     <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
         <div class="card w-full max-w-md">
@@ -1825,7 +1789,6 @@
     </div>
 {/if}
 
-<!-- Assign Prize Modal -->
 {#if showAssignModal && assigningParticipant}
     <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
         <div class="card w-full max-w-md">

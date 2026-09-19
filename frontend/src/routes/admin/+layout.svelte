@@ -14,7 +14,7 @@
 		try {
 			const response = await auth.me();
 			user = response.user;
-			// If no user (e.g., authenticated as participant only), redirect
+			// participant-only sessions have no admin user
 			if (!user) {
 				goto('/login');
 			}
@@ -70,16 +70,13 @@
 	</div>
 {:else}
 	<div class="min-h-screen bg-background flex">
-		<!-- Sidebar -->
 		<aside class="hidden lg:flex lg:flex-col w-56 border-r border-border bg-background">
-			<!-- Logo -->
 			<div class="p-4 border-b border-border">
 				<a href="/admin" class="flex items-center">
 					<img src="/logo.png" alt="ZeroPool" class="h-8 w-auto" />
 				</a>
 			</div>
 
-			<!-- Navigation -->
 			<nav class="flex-1 p-2 space-y-0.5">
 				{#each navItems as item}
 					<a
@@ -116,7 +113,6 @@
 				{/each}
 			</nav>
 
-			<!-- User -->
 			<div class="p-3 border-t border-border">
 				<div class="flex items-center gap-2">
 					<div class="w-7 h-7 rounded bg-accent flex items-center justify-center text-xs font-medium text-foreground text-mono">
@@ -138,7 +134,6 @@
 			</div>
 		</aside>
 
-		<!-- Mobile header -->
 		<div class="lg:hidden fixed top-0 left-0 right-0 z-50 bg-background border-b border-border">
 			<div class="flex items-center justify-between p-4">
 				<button
@@ -158,7 +153,6 @@
 			</div>
 		</div>
 
-		<!-- Mobile sidebar overlay -->
 		{#if sidebarOpen}
 			<div class="lg:hidden fixed inset-0 z-40">
 				<div class="absolute inset-0 bg-black/50" onclick={() => sidebarOpen = false}></div>
@@ -181,7 +175,6 @@
 			</div>
 		{/if}
 
-		<!-- Main content -->
 		<main class="flex-1 lg:pt-0 pt-16 overflow-auto">
 			{@render children()}
 		</main>

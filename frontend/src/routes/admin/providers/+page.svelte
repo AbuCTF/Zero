@@ -10,7 +10,6 @@
 	let testEmail = $state('');
 	let testResult = $state<{ success: boolean; message: string } | null>(null);
 
-	// Form state for adding provider
 	let newProvider = $state({
 		name: '',
 		provider_type: 'smtp',
@@ -184,7 +183,6 @@
 		</button>
 	</div>
 
-	<!-- Test Email Input -->
 	<div class="card mb-6">
 		<label for="testEmail" class="block text-sm font-medium text-foreground mb-1.5">
 			Test Email Address
@@ -208,7 +206,6 @@
 		{/if}
 	</div>
 
-	<!-- Providers List -->
 	{#if loading}
 		<div class="space-y-4">
 			{#each [1, 2, 3] as _}
@@ -311,7 +308,6 @@
 	{/if}
 </div>
 
-<!-- Add Provider Modal -->
 {#if showAddModal}
 	<div class="fixed inset-0 z-50 flex items-center justify-center p-4">
 		<div class="absolute inset-0 bg-black/50" onclick={() => showAddModal = false}></div>
@@ -356,7 +352,6 @@
 					</select>
 				</div>
 
-				<!-- Dynamic config fields -->
 				{#each providerConfigs[newProvider.provider_type].fields as field}
 					<div>
 						<label for={field.key} class="block text-sm font-medium text-foreground mb-1.5">

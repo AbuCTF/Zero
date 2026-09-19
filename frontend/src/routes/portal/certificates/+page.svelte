@@ -52,7 +52,6 @@
         try {
             const result = await api.participant.updateCertificateName(certId, editName.trim());
             if (result.success) {
-                // Update local state
                 certificates = certificates.map(c => 
                     c.id === certId ? { ...c, display_name: result.display_name } : c
                 );
@@ -105,7 +104,6 @@
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {#each certificates as cert}
                 <div class="card overflow-hidden">
-                    <!-- Preview -->
                     <div class="aspect-video bg-muted relative">
                         <div class="absolute inset-0 flex flex-col items-center justify-center">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 text-foreground-muted/50 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -131,7 +129,6 @@
                             </span>
                         </div>
                         
-                        <!-- Display Name Edit Section -->
                         <div class="mb-4 p-3 bg-muted/50 rounded-lg">
                             <div class="flex items-center justify-between mb-1">
                                 <span class="text-xs text-foreground-muted">Name on Certificate</span>

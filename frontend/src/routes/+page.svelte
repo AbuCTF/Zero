@@ -4,7 +4,6 @@
 </svelte:head>
 
 <div class="relative min-h-screen overflow-hidden bg-background font-sans">
-	<!-- Navigation -->
 	<nav class="fixed top-0 left-0 right-0 z-50 border-b border-border/40 bg-background/80 backdrop-blur-xl">
 		<div class="mx-auto max-w-6xl px-4 sm:px-6">
 			<div class="flex h-16 items-center justify-between">
@@ -23,7 +22,6 @@
 		</div>
 	</nav>
 
-	<!-- Ambient background: fading grid + soft central glow -->
 	<div class="pointer-events-none absolute inset-0 z-0" aria-hidden="true">
 		<div
 			class="absolute inset-0"
@@ -42,7 +40,6 @@
 		></div>
 	</div>
 
-	<!-- Hero -->
 	<section class="relative z-10 flex min-h-screen items-center justify-center px-6 py-24">
 		<div class="mx-auto max-w-3xl text-center">
 			<div class="mb-7 inline-flex items-center gap-2 rounded-full border border-border bg-card/60 px-3.5 py-1.5 text-xs font-medium text-foreground-muted backdrop-blur-sm">
@@ -71,7 +68,6 @@
 				</a>
 			</div>
 
-			<!-- Providers it pools -->
 			<div class="mt-16 flex flex-col items-center gap-3.5">
 				<span class="text-[11px] font-semibold uppercase tracking-[0.16em] text-foreground-muted/60">
 					Pools your free tiers from

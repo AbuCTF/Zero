@@ -117,7 +117,6 @@
 
 <div class="min-h-screen bg-background flex flex-col">
 
-    <!-- Header -->
     <header class="sticky top-0 z-10 bg-background/90 backdrop-blur-sm border-b border-border/50">
         <div class="max-w-2xl mx-auto px-5 sm:px-8 h-14 flex items-center">
             <a href="/" class="opacity-80 hover:opacity-100 transition-opacity duration-200" aria-label="Home">
@@ -128,7 +127,6 @@
 
     <main class="flex-1 max-w-2xl mx-auto w-full px-5 sm:px-8 py-12 sm:py-16">
 
-        <!-- Loading -->
         {#if loading}
             <div class="max-w-sm mx-auto text-center space-y-3 mb-12">
                 <div class="skeleton h-7 w-48 mx-auto rounded" />
@@ -141,7 +139,6 @@
                 <div class="skeleton h-10 rounded" />
             </div>
 
-        <!-- Not found -->
         {:else if error && !event}
             <div class="text-center py-24">
                 <p class="text-xs font-mono text-foreground-muted/50 mb-2 tracking-widest uppercase">Not Found</p>
@@ -153,7 +150,6 @@
             </div>
 
         {:else if event}
-            <!-- Event header -->
             <div class="text-center mb-10 sm:mb-14">
                 {#if getStatusLabel()}
                     <p class="text-label mb-4">{getStatusLabel()}</p>
@@ -178,10 +174,8 @@
                 </div>
             </div>
 
-            <!-- State cards -->
             <div class="max-w-sm mx-auto">
 
-                <!-- Success -->
                 {#if success}
                     <div class="text-center py-10 space-y-5 fade-in">
                         <div class="w-12 h-12 mx-auto rounded-full border border-success/30 bg-success/10 flex items-center justify-center">
@@ -200,7 +194,6 @@
                         </p>
                     </div>
 
-                <!-- Import only / Participant portal -->
                 {:else if isImportOnly()}
                     <div class="text-center py-10 space-y-5 fade-in">
                         <div class="w-12 h-12 mx-auto rounded-full border border-border bg-accent flex items-center justify-center">
@@ -219,7 +212,6 @@
                         </a>
                     </div>
 
-                <!-- Registration unavailable -->
                 {:else if !isRegistrationOpen()}
                     <div class="text-center py-10 space-y-4 fade-in">
                         <div class="w-12 h-12 mx-auto rounded-full border border-border bg-accent flex items-center justify-center">
@@ -233,7 +225,6 @@
                         </div>
                     </div>
 
-                <!-- Registration form -->
                 {:else}
                     <div class="card fade-in">
                         {#if error}
@@ -349,7 +340,6 @@
         {/if}
     </main>
 
-    <!-- Footer -->
     <footer class="border-t border-border/40 py-5 mt-auto">
         <div class="max-w-2xl mx-auto px-5 sm:px-8 flex items-center justify-between">
             <span class="text-xs font-mono text-foreground-muted/40">Powered by</span>

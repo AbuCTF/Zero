@@ -40,7 +40,6 @@
 		try {
 			await api.participant.logout();
 		} catch {
-			/* ignore */
 		}
 		goto('/');
 	}
@@ -136,7 +135,6 @@
 	</div>
 {:else}
 	<div class="min-h-screen bg-background">
-		<!-- Mobile top bar -->
 		<header class="sticky top-0 z-30 flex items-center justify-between border-b border-white/[0.06] bg-card/80 px-4 py-3 backdrop-blur-xl lg:hidden">
 			<button class="btn-ghost btn-sm !px-1.5" onclick={() => (sidebarOpen = true)} aria-label="Open menu">
 				<svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" /></svg>
@@ -145,12 +143,10 @@
 			<div class="flex h-7 w-7 items-center justify-center rounded-lg bg-brass/10 text-xs font-semibold text-brass ring-1 ring-inset ring-brass/20">{initial}</div>
 		</header>
 
-		<!-- Desktop sidebar -->
 		<aside class="fixed inset-y-0 left-0 hidden w-64 flex-col border-r border-white/[0.06] bg-card lg:flex">
 			{@render sidebarInner()}
 		</aside>
 
-		<!-- Mobile drawer -->
 		{#if sidebarOpen}
 			<button class="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden" onclick={() => (sidebarOpen = false)} aria-label="Close menu"></button>
 			<aside class="fade-in fixed inset-y-0 left-0 z-50 w-64 border-r border-white/[0.06] bg-card lg:hidden">
@@ -158,7 +154,6 @@
 			</aside>
 		{/if}
 
-		<!-- Main content -->
 		<main class="lg:pl-64">
 			<div class="mx-auto max-w-4xl px-4 py-6 sm:px-6 lg:px-10 lg:py-10">
 				{@render children()}

@@ -86,7 +86,6 @@
 	</div>
 {:else if participant}
 	<div class="fade-in space-y-5">
-		<!-- Identity header -->
 		<section class="surface p-6">
 			<div class="flex items-center gap-4 sm:gap-5">
 				<div class="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-brass/10 text-2xl font-semibold text-brass ring-1 ring-inset ring-brass/20">
@@ -101,7 +100,6 @@
 			</div>
 		</section>
 
-		<!-- Verified identity (read-only) -->
 		<section class="surface-plain p-6">
 			<div class="eyebrow mb-4">Verified identity</div>
 			<div class="divide-y divide-white/[0.06]">
@@ -133,7 +131,6 @@
 			</p>
 		</section>
 
-		<!-- Editable details -->
 		<section class="surface-plain p-6">
 			<div class="eyebrow mb-4">Your details</div>
 			<div class="space-y-4">

@@ -33,7 +33,6 @@
 
     let previewImage = $state<string | null>(null);
     let selectedZone = $state<string | null>(null);
-    let isDragging = $state(false);
 
     const availableFields = [
         { value: 'participant_name', label: 'Participant Name' },
@@ -127,11 +126,9 @@
 
         uploading = true;
         try {
-            // Create FormData for upload
             const formData = new FormData();
             formData.append('file', file);
-            
-            // Upload to server
+
             const response = await fetch('/api/admin/upload', {
                 method: 'POST',
                 body: formData,
@@ -144,15 +141,14 @@
             
             const result = await response.json();
             form.background_image = result.url;
-            
-            // Show preview
+
             const reader = new FileReader();
             reader.onload = (e) => {
                 previewImage = e.target?.result as string;
             };
             reader.readAsDataURL(file);
         } catch (e: any) {
-            // Fallback: use base64 for demo
+            // fallback: base64
             const reader = new FileReader();
             reader.onload = (e) => {
                 const base64 = e.target?.result as string;
@@ -349,7 +345,6 @@
                 {/if}
                 
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <!-- Left: Settings -->
                     <div class="space-y-4">
                         <div>
                             <label for="name" class="block text-sm font-medium mb-1.5">
@@ -545,7 +540,6 @@
                         </div>
                     </div>
 
-                    <!-- Right: Preview -->
                     <div>
                         <h3 class="text-sm font-medium mb-3">Preview</h3>
                         <div 
@@ -558,7 +552,6 @@
                                     alt="Certificate preview"
                                     class="w-full h-full object-contain"
                                 />
-                                <!-- Text zone markers -->
                                 {#each form.text_zones as zone}
                                     <div 
                                         class="absolute transform -translate-x-1/2 -translate-y-1/2 pointer-events-none

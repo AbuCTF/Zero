@@ -50,7 +50,6 @@
 		</a>
 	</div>
 
-	<!-- Filters -->
 	<div class="card mb-6">
 		<div class="flex flex-wrap gap-4">
 			<div>
@@ -74,7 +73,6 @@
 		</div>
 	</div>
 
-	<!-- Events Table -->
 	{#if loading}
 		<div class="table-container">
 			<table class="table">
@@ -165,7 +163,6 @@
 			</table>
 		</div>
 
-		<!-- Pagination -->
 		{#if pages > 1}
 			<div class="flex items-center justify-between mt-4">
 				<p class="text-sm text-foreground-muted">

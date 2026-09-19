@@ -1,7 +1,3 @@
-/**
- * API Client for ZeroPool Backend
- */
-
 import { browser } from '$app/environment';
 
 const API_BASE = browser ? '/api' : (import.meta.env.VITE_API_URL || 'http://localhost:8000/api');
@@ -45,7 +41,7 @@ async function request<T>(
 			'Content-Type': 'application/json',
 			...options.headers
 		},
-		credentials: 'include' // Include cookies for session auth
+		credentials: 'include'
 	};
 
 	const response = await fetch(url, config);
@@ -65,7 +61,6 @@ async function request<T>(
 		throw new ApiError(response.status, errorCode, errorMessage);
 	}
 
-	// Handle empty responses
 	const text = await response.text();
 	if (!text) {
 		return {} as T;
@@ -74,7 +69,6 @@ async function request<T>(
 	return JSON.parse(text);
 }
 
-// Auth endpoints
 export const auth = {
 	login: (email: string, password: string) =>
 		request<{ success: boolean; user: App.Locals['user'] }>('/auth/login', {
@@ -112,7 +106,6 @@ export const auth = {
 		})
 };
 
-// Events endpoints
 export const events = {
 	list: (page = 1, perPage = 20) =>
 		request<{
@@ -137,13 +130,10 @@ export const events = {
 		})
 };
 
-// Admin endpoints
 export const admin = {
-	// Dashboard
 	stats: () =>
 		request<DashboardStats>('/admin/stats'),
 
-	// Events
 	events: {
 		list: (page = 1, status?: string) => {
 			let url = `/admin/events?page=${page}`;
@@ -196,7 +186,6 @@ export const admin = {
 			})
 	},
 
-	// Participants
 	participants: {
 		list: (eventId: string, page = 1, perPage = 50, search?: string, verified?: boolean) => {
 			let url = `/admin/events/${eventId}/participants?page=${page}&per_page=${perPage}`;
@@ -225,7 +214,6 @@ export const admin = {
 			})
 	},
 
-	// Email Providers
 	providers: {
 		list: () =>
 			request<EmailProvider[]>('/admin/providers'),
@@ -254,7 +242,6 @@ export const admin = {
 			)
 	},
 
-	// Email Templates
 	templates: {
 		list: (eventId?: string) => {
 			let url = '/admin/templates';
@@ -283,7 +270,6 @@ export const admin = {
 			})
 	},
 
-	// Voucher Pools
 	voucherPools: {
 		list: (eventId: string) =>
 			request<VoucherPool[]>(`/admin/events/${eventId}/voucher-pools`),
@@ -311,7 +297,6 @@ export const admin = {
 		}
 	},
 
-	// Prize Rules
 	prizeRules: {
 		list: (eventId: string) =>
 			request<PrizeRule[]>(`/admin/events/${eventId}/prize-rules`),
@@ -328,7 +313,6 @@ export const admin = {
 			})
 	},
 
-	// Certificate Templates
 	certificateTemplates: {
 		list: (eventId?: string) => {
 			let url = '/admin/certificate-templates';
@@ -364,7 +348,6 @@ export const admin = {
 		}
 	},
 
-	// Campaigns
 	campaigns: {
 		list: (eventId?: string) => {
 			let url = '/admin/campaigns';
@@ -405,7 +388,6 @@ export const admin = {
 	}
 };
 
-// Participant portal endpoints
 export const participant = {
 	me: () =>
 		request<Participant>('/participants/me'),
@@ -459,7 +441,6 @@ export const participant = {
 		`${API_BASE}/participants/me/certificates/${certId}/download?format=${format}`
 };
 
-// Public endpoints
 export const publicApi = {
 	verifyCertificate: (code: string) =>
 		request<{
@@ -471,7 +452,6 @@ export const publicApi = {
 		}>(`/certificates/verify/${code}`)
 };
 
-// Type definitions
 export interface Event {
 	id: string;
 	name: string;
@@ -689,7 +669,7 @@ export interface Prize {
 	status: 'pending' | 'available' | 'claimed' | 'expired';
 	claimed_at?: string;
 	created_at: string;
-	// Enriched display fields (populated by the participant-facing endpoint)
+	// enriched display fields populated by the participant-facing endpoint
 	name?: string;
 	description?: string;
 	event_name?: string;
@@ -786,7 +766,6 @@ export interface CampaignCreate {
 	scheduled_at?: string;
 }
 
-// Combined API export
 export const api = {
 	auth,
 	events,

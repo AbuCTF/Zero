@@ -8,7 +8,6 @@
 	let loading = $state(false);
 	let showPassword = $state(false);
 
-	// Forgot password state
 	let showForgotPassword = $state(false);
 	let forgotEmail = $state('');
 	let forgotLoading = $state(false);
@@ -60,14 +59,12 @@
 </svelte:head>
 
 <div class="min-h-screen bg-background flex flex-col">
-	<!-- Subtle ambient glow at top -->
 	<div class="fixed inset-0 pointer-events-none" aria-hidden="true">
 		<div class="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px]"
 			style="background: radial-gradient(ellipse at 50% 0%, hsl(var(--foreground) / 0.04), transparent 70%);"></div>
 	</div>
 
 	<div class="flex-1 flex flex-col items-center justify-center px-6 relative">
-		<!-- Logo -->
 		<a href="/" class="mb-12 block opacity-80 hover:opacity-100 transition-opacity duration-200" aria-label="Home">
 			<img src="/logo.png" alt="ZeroPool" class="h-7 w-auto" />
 		</a>
@@ -165,7 +162,6 @@
 	</div>
 </div>
 
-<!-- Forgot Password Modal -->
 {#if showForgotPassword}
 	<div
 		class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-4"

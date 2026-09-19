@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { auth, ApiError } from '$lib/api';
 	import { page } from '$app/stores';
-	import { goto } from '$app/navigation';
 
 	let token = $derived($page.url.searchParams.get('token') || '');
 	let password = $state('');

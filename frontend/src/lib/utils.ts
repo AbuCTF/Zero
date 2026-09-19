@@ -1,20 +1,13 @@
-// Re-export utilities
 export { clsx } from 'clsx';
 export { twMerge } from 'tailwind-merge';
 
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
-/**
- * Merge Tailwind CSS classes with clsx
- */
 export function cn(...inputs: ClassValue[]) {
 	return twMerge(clsx(inputs));
 }
 
-/**
- * Format a date string
- */
 export function formatDate(date: string | Date | undefined, options?: Intl.DateTimeFormatOptions): string {
 	if (!date) return '-';
 	const d = typeof date === 'string' ? new Date(date) : date;
@@ -26,9 +19,6 @@ export function formatDate(date: string | Date | undefined, options?: Intl.DateT
 	});
 }
 
-/**
- * Format a date with time
- */
 export function formatDateTime(date: string | Date | undefined): string {
 	if (!date) return '-';
 	const d = typeof date === 'string' ? new Date(date) : date;
@@ -41,9 +31,6 @@ export function formatDateTime(date: string | Date | undefined): string {
 	});
 }
 
-/**
- * Format relative time
- */
 export function formatRelativeTime(date: string | Date): string {
 	const d = typeof date === 'string' ? new Date(date) : date;
 	const now = new Date();
@@ -62,40 +49,25 @@ export function formatRelativeTime(date: string | Date): string {
 	return formatDate(d);
 }
 
-/**
- * Format a number with commas
- */
 export function formatNumber(num: number | undefined): string {
 	if (num === undefined || num === null) return '0';
 	return num.toLocaleString();
 }
 
-/**
- * Format percentage
- */
 export function formatPercent(value: number, total: number): string {
 	if (total === 0) return '0%';
 	return `${Math.round((value / total) * 100)}%`;
 }
 
-/**
- * Truncate text
- */
 export function truncate(text: string, length: number): string {
 	if (text.length <= length) return text;
 	return text.slice(0, length) + '...';
 }
 
-/**
- * Capitalize first letter
- */
 export function capitalize(text: string): string {
 	return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
-/**
- * Slugify a string
- */
 export function slugify(text: string): string {
 	return text
 		.toLowerCase()
@@ -105,9 +77,6 @@ export function slugify(text: string): string {
 		.replace(/^-+|-+$/g, '');
 }
 
-/**
- * Debounce function
- */
 export function debounce<T extends (...args: unknown[]) => unknown>(
 	fn: T,
 	delay: number
@@ -119,15 +88,12 @@ export function debounce<T extends (...args: unknown[]) => unknown>(
 	};
 }
 
-/**
- * Copy text to clipboard
- */
 export async function copyToClipboard(text: string): Promise<boolean> {
 	try {
 		await navigator.clipboard.writeText(text);
 		return true;
 	} catch {
-		// Fallback for older browsers
+		// fallback for older browsers
 		const textarea = document.createElement('textarea');
 		textarea.value = text;
 		document.body.appendChild(textarea);
@@ -138,9 +104,6 @@ export async function copyToClipboard(text: string): Promise<boolean> {
 	}
 }
 
-/**
- * Download file from URL
- */
 export function downloadFile(url: string, filename?: string): void {
 	const a = document.createElement('a');
 	a.href = url;
@@ -150,18 +113,12 @@ export function downloadFile(url: string, filename?: string): void {
 	document.body.removeChild(a);
 }
 
-/**
- * Generate random ID
- */
 export function generateId(length = 8): string {
 	return Math.random()
 		.toString(36)
 		.substring(2, 2 + length);
 }
 
-/**
- * Check if value is empty
- */
 export function isEmpty(value: unknown): boolean {
 	if (value === null || value === undefined) return true;
 	if (typeof value === 'string') return value.trim() === '';
@@ -170,9 +127,6 @@ export function isEmpty(value: unknown): boolean {
 	return false;
 }
 
-/**
- * Safe JSON parse
- */
 export function safeJsonParse<T>(json: string, fallback: T): T {
 	try {
 		return JSON.parse(json);
@@ -181,9 +135,6 @@ export function safeJsonParse<T>(json: string, fallback: T): T {
 	}
 }
 
-/**
- * Event status badge color
- */
 export function getEventStatusColor(status: string): string {
 	switch (status) {
 		case 'draft':
@@ -201,9 +152,6 @@ export function getEventStatusColor(status: string): string {
 	}
 }
 
-/**
- * Provider type display name
- */
 export function getProviderDisplayName(type: string): string {
 	const names: Record<string, string> = {
 		smtp: 'SMTP',

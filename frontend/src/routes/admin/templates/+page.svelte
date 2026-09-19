@@ -160,7 +160,6 @@
             const end = textarea.selectionEnd;
             const text = form.body_html;
             form.body_html = text.substring(0, start) + variable + text.substring(end);
-            // Reset cursor position after insert
             setTimeout(() => {
                 textarea.focus();
                 textarea.setSelectionRange(start + variable.length, start + variable.length);

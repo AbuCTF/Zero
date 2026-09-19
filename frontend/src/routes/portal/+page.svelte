@@ -85,7 +85,6 @@
 	</div>
 {:else}
 	<div class="fade-in space-y-5">
-		<!-- Hero / command center -->
 		<section class="surface p-6 sm:p-7">
 			<div class="flex items-center gap-4 sm:gap-5">
 				<div class="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-brass/10 text-xl font-semibold text-brass ring-1 ring-inset ring-brass/20 sm:h-16 sm:w-16">
@@ -114,7 +113,6 @@
 			</div>
 		</section>
 
-		<!-- Events -->
 		<div>
 			<div class="eyebrow mb-3">Your events</div>
 			{#if events.length === 0}
@@ -170,7 +168,6 @@
 			{/if}
 		</div>
 
-		<!-- Quick actions -->
 		<div>
 			<div class="eyebrow mb-3">Quick actions</div>
 			<div class="grid gap-3 sm:grid-cols-3">
