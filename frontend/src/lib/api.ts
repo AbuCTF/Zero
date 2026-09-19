@@ -609,7 +609,7 @@ export interface EmailTemplate {
 }
 
 export interface EmailTemplateCreate {
-	event_id?: string;
+	event_id?: string | null;
 	slug: string;
 	name: string;
 	description?: string;
@@ -694,13 +694,13 @@ export interface CertificateTemplate {
 }
 
 export interface TextZone {
-	text: string;
+	field: string;
 	x: number;
 	y: number;
-	font_name?: string;
 	font_size?: number;
+	font_family?: string;
 	color?: string;
-	align?: 'left' | 'center' | 'right';
+	alignment?: 'left' | 'center' | 'right';
 }
 
 export interface QRZone {
@@ -738,6 +738,7 @@ export interface Certificate {
 	display_name?: string;
 	name_locked?: boolean;
 	edit_count?: number;
+	rank?: number;
 	created_at: string;
 }
 

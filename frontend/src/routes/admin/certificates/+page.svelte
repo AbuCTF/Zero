@@ -1,9 +1,9 @@
 <script lang="ts">
     import { onMount } from 'svelte';
-    import { api, type CertificateTemplate, type Event } from '$lib/api';
+    import { api, type CertificateTemplate, type Event as CtfEvent } from '$lib/api';
 
     let templates = $state<CertificateTemplate[]>([]);
-    let events = $state<Event[]>([]);
+    let events = $state<CtfEvent[]>([]);
     let loading = $state(true);
     let error = $state('');
     
@@ -227,7 +227,7 @@
         }
     }
 
-    function getEventName(eventId: string | null): string {
+    function getEventName(eventId: string | null | undefined): string {
         if (!eventId) return 'Global';
         return events.find(e => e.id === eventId)?.name || 'Unknown';
     }

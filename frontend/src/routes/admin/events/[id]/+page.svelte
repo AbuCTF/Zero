@@ -5,7 +5,7 @@
     import { api, type Event, type Participant, type EventStats, type VoucherPool } from '$lib/api';
     import { formatDate, formatNumber } from '$lib/utils';
 
-    const eventId = $derived($page.params.id);
+    const eventId = $derived($page.params.id!);
 
     let event = $state<Event | null>(null);
     let eventStats = $state<EventStats | null>(null);

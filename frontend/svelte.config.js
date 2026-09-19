@@ -12,8 +12,7 @@ const config = {
 			envPrefix: ''
 		}),
 		alias: {
-			$lib: './src/lib',
-			$components: './src/lib/components'
+			$lib: './src/lib'
 		}
 	}
 };

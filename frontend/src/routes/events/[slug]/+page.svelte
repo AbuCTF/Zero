@@ -4,7 +4,7 @@
     import { api, type Event } from '$lib/api';
     import { formatDate } from '$lib/utils';
 
-    const slug = $derived($page.params.slug);
+    const slug = $derived($page.params.slug!);
 
     let event = $state<Event | null>(null);
     let loading = $state(true);

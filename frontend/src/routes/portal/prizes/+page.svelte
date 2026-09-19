@@ -7,7 +7,7 @@
     let loading = $state(true);
     let error = $state('');
     
-    let claimingId = $state<number | null>(null);
+    let claimingId = $state<string | null>(null);
     let showVoucher = $state<Prize | null>(null);
 
     onMount(async () => {
@@ -25,7 +25,7 @@
         }
     }
 
-    async function claimPrize(prizeId: number) {
+    async function claimPrize(prizeId: string) {
         claimingId = prizeId;
         try {
             await api.participant.claimPrize(prizeId);
