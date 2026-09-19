@@ -83,6 +83,7 @@ class Settings(BaseSettings):
 
     anvil_sso_shared_secret: Optional[str] = None
     anvil_sso_url: str = "https://ctf.h7tex.com/sso"
+    anvil_zp_api_key: Optional[str] = None
 
     @property
     def anvil_sso_enabled(self) -> bool:
@@ -111,7 +112,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_format: str = "json"
 
-    cors_origins: str = "http://localhost:3000,http://localhost:5173,https://h7tex.com,https://www.h7tex.com,https://2026.h7tex.com,https://app.h7tex.com"
+    cors_origins: str = "http://localhost:3000,http://localhost:5173,https://h7tex.com,https://www.h7tex.com,https://2026.h7tex.com,https://app.h7tex.com,https://ctf.h7tex.com"
 
     @property
     def cors_origins_list(self) -> List[str]:

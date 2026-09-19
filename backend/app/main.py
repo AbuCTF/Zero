@@ -100,7 +100,7 @@ async def root():
     }
 
 
-from app.api import admin, auth, certificates, events, participants, prizes
+from app.api import admin, auth, certificates, events, identity, participants, prizes
 
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(events.router, prefix="/api/events", tags=["Events"])
@@ -113,6 +113,7 @@ app.include_router(
 )
 
 app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
+app.include_router(identity.router, prefix="/api/identity", tags=["Identity"])
 
 
 upload_path = Path(settings.upload_dir)
