@@ -81,6 +81,13 @@ class Settings(BaseSettings):
     def discord_enabled(self) -> bool:
         return bool(self.discord_client_id and self.discord_client_secret)
 
+    anvil_sso_shared_secret: Optional[str] = None
+    anvil_sso_url: str = "https://ctf.h7tex.com/sso"
+
+    @property
+    def anvil_sso_enabled(self) -> bool:
+        return bool(self.anvil_sso_shared_secret)
+
     cert_salt: str = Field(default="change-this-salt")
     fonts_dir: str = "/app/fonts"
     certs_dir: str = "/app/storage/certificates"

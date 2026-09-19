@@ -2,7 +2,9 @@
 
 from datetime import datetime, timedelta, timezone
 import secrets
+import uuid
 
+from jose import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
@@ -386,6 +388,61 @@ async def get_participant_events(
         }
         for event in events
     ]
+
+
+@router.post(
+    "/me/sso",
+    dependencies=[Depends(rate_limit("participants:sso", (20, 60), (200, 3600)))],
+)
+async def sso_to_anvil(
+    participant: Participant = Depends(require_verified_participant),
+    db: AsyncSession = Depends(get_session),
+):
+    """mint a short-lived single-use sso token and return the anvil handoff url.
+
+    the token is only valid for ~90s, single-use (jti replay-guarded on anvil),
+    and only issued for a verified participant scoped to a real event. the token
+    rides in the url fragment on the client so it never reaches anvil's logs.
+    """
+    if not settings.anvil_sso_shared_secret:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Competition sign-on is not configured",
+        )
+
+    result = await db.execute(select(Event).where(Event.id == participant.event_id))
+    event = result.scalar_one_or_none()
+    if not event:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Event not found",
+        )
+
+    now = int(datetime.now(timezone.utc).timestamp())
+    try:
+        token = jwt.encode(
+            {
+                "iss": "zeropool",
+                "aud": "anvil",
+                "sub": str(participant.id),
+                "email": participant.email,
+                "username": participant.username or participant.name,
+                "email_verified": True,
+                "event_slug": event.slug,
+                "iat": now,
+                "exp": now + 90,
+                "jti": str(uuid.uuid4()),
+            },
+            settings.anvil_sso_shared_secret,
+            algorithm="HS256",
+        )
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to create competition sign-on token",
+        )
+
+    return {"url": f"{settings.anvil_sso_url}#token={token}"}
 
 
 @router.get("/me/team")

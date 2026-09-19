@@ -406,6 +406,11 @@ export const participant = {
 			method: 'POST'
 		}),
 
+	ssoToAnvil: () =>
+		request<{ url: string }>('/participants/me/sso', {
+			method: 'POST'
+		}),
+
 	requestAccess: (email: string, eventId?: string) =>
 		request<{ 
 			success: boolean; 

@@ -6,6 +6,8 @@
 	let participant = $state<Participant | null>(null);
 	let events = $state<Event[]>([]);
 	let loading = $state(true);
+	let entering = $state(false);
+	let enterError = $state('');
 
 	onMount(async () => {
 		try {
@@ -52,6 +54,18 @@
 	}
 	function discordUrl(ev: Event): string | undefined {
 		return ev.settings?.discord_url as string | undefined;
+	}
+	async function enterCompetition() {
+		if (entering) return;
+		entering = true;
+		enterError = '';
+		try {
+			const { url } = await api.participant.ssoToAnvil();
+			window.location.href = url;
+		} catch (e: any) {
+			enterError = e?.message || 'Could not enter the competition. Please try again.';
+			entering = false;
+		}
 	}
 </script>
 
@@ -152,13 +166,18 @@
 									</div>
 								{/if}
 							</div>
-							{#if discordUrl(ev) || (ev.status === 'live' && ev.ctfd_url)}
-								<div class="mt-5 flex flex-wrap gap-2.5 border-t border-white/[0.06] pt-5">
-									{#if ev.status === 'live' && ev.ctfd_url}
-										<a href={ev.ctfd_url} target="_blank" rel="noopener" class="btn-accent btn-sm">Enter competition</a>
+							{#if discordUrl(ev) || ev.status === 'live'}
+								<div class="mt-5 flex flex-wrap items-center gap-2.5 border-t border-white/[0.06] pt-5">
+									{#if ev.status === 'live'}
+										<button onclick={enterCompetition} disabled={entering} class="btn-accent btn-sm">
+											{entering ? 'Entering…' : 'Enter competition'}
+										</button>
 									{/if}
 									{#if discordUrl(ev)}
 										<a href={discordUrl(ev)} target="_blank" rel="noopener" class="btn-secondary btn-sm">Join Discord</a>
+									{/if}
+									{#if enterError}
+										<span class="text-xs text-destructive">{enterError}</span>
 									{/if}
 								</div>
 							{/if}
