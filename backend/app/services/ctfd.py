@@ -1,14 +1,6 @@
-"""
-CTFd Integration Service
-
-Handles:
-- User provisioning to CTFd
-- Team sync after event
-- Scoreboard/results sync
-"""
+"""ctfd integration: user provisioning and results sync."""
 
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
@@ -19,7 +11,6 @@ from app.utils.security import decrypt_data
 
 @dataclass
 class CTFdUser:
-    """User data from CTFd."""
     id: int
     name: str
     email: str
@@ -30,7 +21,6 @@ class CTFdUser:
 
 @dataclass
 class CTFdTeam:
-    """Team data from CTFd."""
     id: int
     name: str
     score: int = 0
@@ -44,7 +34,6 @@ class CTFdTeam:
 
 @dataclass
 class CTFdSyncResult:
-    """Result of syncing with CTFd."""
     success: bool
     users_synced: int = 0
     teams_synced: int = 0
@@ -52,23 +41,12 @@ class CTFdSyncResult:
 
 
 class CTFdClient:
-    """
-    Client for interacting with CTFd API.
-    
-    Supports CTFd v3.x API.
-    """
+    """client for the ctfd v3.x api."""
     
     def __init__(self, base_url: str, api_key: str):
-        """
-        Initialize CTFd client.
-        
-        Args:
-            base_url: CTFd instance URL (e.g., https://ctf.example.com)
-            api_key: CTFd API key (Admin token)
-        """
         self.base_url = base_url.rstrip("/")
         
-        # Decrypt if encrypted
+        # decrypt if encrypted
         if api_key and api_key.startswith("gAAAAA"):
             api_key = decrypt_data(api_key)
         
@@ -84,7 +62,6 @@ class CTFdClient:
         endpoint: str,
         **kwargs,
     ) -> Dict[str, Any]:
-        """Make API request to CTFd."""
         url = f"{self.base_url}/api/v1{endpoint}"
         
         async with httpx.AsyncClient() as client:
@@ -99,16 +76,11 @@ class CTFdClient:
             return response.json()
     
     async def health_check(self) -> bool:
-        """Check if CTFd is accessible."""
         try:
             await self._request("GET", "/users/me")
             return True
         except Exception:
             return False
-    
-    # -------------------------------------------------------------------------
-    # User Operations
-    # -------------------------------------------------------------------------
     
     async def create_user(
         self,
@@ -120,21 +92,7 @@ class CTFdClient:
         banned: bool = False,
         user_type: str = "user",
     ) -> Dict[str, Any]:
-        """
-        Create a new user in CTFd.
-        
-        Args:
-            name: Username
-            email: Email address
-            password: Plain text password
-            verified: Whether email is verified
-            hidden: Whether user is hidden from scoreboard
-            banned: Whether user is banned
-            user_type: 'user' or 'admin'
-            
-        Returns:
-            Created user data
-        """
+        """create a user in ctfd; password is plain text, user_type is 'user' or 'admin'."""
         data = {
             "name": name,
             "email": email,
@@ -149,7 +107,6 @@ class CTFdClient:
         return result.get("data", {})
     
     async def get_user(self, user_id: int) -> Optional[Dict[str, Any]]:
-        """Get user by ID."""
         try:
             result = await self._request("GET", f"/users/{user_id}")
             return result.get("data")
@@ -159,13 +116,11 @@ class CTFdClient:
             raise
     
     async def get_user_by_email(self, email: str) -> Optional[Dict[str, Any]]:
-        """Get user by email."""
         result = await self._request("GET", "/users", params={"q": email, "field": "email"})
         users = result.get("data", [])
         return users[0] if users else None
     
     async def get_users(self, page: int = 1, per_page: int = 100) -> List[Dict[str, Any]]:
-        """Get all users with pagination."""
         result = await self._request(
             "GET",
             "/users",
@@ -174,16 +129,11 @@ class CTFdClient:
         return result.get("data", [])
     
     async def delete_user(self, user_id: int) -> bool:
-        """Delete a user."""
         try:
             await self._request("DELETE", f"/users/{user_id}")
             return True
         except httpx.HTTPStatusError:
             return False
-    
-    # -------------------------------------------------------------------------
-    # Team Operations
-    # -------------------------------------------------------------------------
     
     async def create_team(
         self,
@@ -193,7 +143,6 @@ class CTFdClient:
         hidden: bool = False,
         banned: bool = False,
     ) -> Dict[str, Any]:
-        """Create a new team in CTFd."""
         data = {
             "name": name,
             "password": password,
@@ -208,7 +157,6 @@ class CTFdClient:
         return result.get("data", {})
     
     async def get_team(self, team_id: int) -> Optional[Dict[str, Any]]:
-        """Get team by ID."""
         try:
             result = await self._request("GET", f"/teams/{team_id}")
             return result.get("data")
@@ -218,7 +166,6 @@ class CTFdClient:
             raise
     
     async def get_teams(self, page: int = 1, per_page: int = 100) -> List[Dict[str, Any]]:
-        """Get all teams with pagination."""
         result = await self._request(
             "GET",
             "/teams",
@@ -227,12 +174,10 @@ class CTFdClient:
         return result.get("data", [])
     
     async def get_team_members(self, team_id: int) -> List[Dict[str, Any]]:
-        """Get members of a team."""
         result = await self._request("GET", f"/teams/{team_id}/members")
         return result.get("data", [])
     
     async def add_user_to_team(self, team_id: int, user_id: int) -> bool:
-        """Add a user to a team."""
         try:
             await self._request(
                 "POST",
@@ -243,31 +188,19 @@ class CTFdClient:
         except httpx.HTTPStatusError:
             return False
     
-    # -------------------------------------------------------------------------
-    # Scoreboard Operations
-    # -------------------------------------------------------------------------
-    
     async def get_scoreboard(self) -> List[Dict[str, Any]]:
-        """Get the current scoreboard."""
         result = await self._request("GET", "/scoreboard")
         return result.get("data", [])
     
     async def get_standings(self, count: int = 100) -> List[Dict[str, Any]]:
-        """
-        Get top N standings.
-        
-        CTFd API: GET /scoreboard/top/{count}
-        Returns dict with keys like "1", "2", etc. for each position
-        Each position contains: id, name, solves, score, (and members for teams)
-        """
+        """get top N standings; ctfd returns {"1": {...}, ...} keyed by position."""
         result = await self._request(
             "GET",
-            f"/scoreboard/top/{count}",  # Path param, not query param
+            f"/scoreboard/top/{count}",  # path param, not query param
         )
-        # CTFd returns {"1": {...}, "2": {...}, ...} format
         data = result.get("data", {})
         
-        # Convert dict format to list sorted by position
+        # convert dict to list sorted by position
         standings = []
         for pos in sorted(data.keys(), key=lambda x: int(x) if x.isdigit() else 999):
             entry = data[pos]
@@ -275,12 +208,7 @@ class CTFdClient:
             standings.append(entry)
         return standings
     
-    # -------------------------------------------------------------------------
-    # Challenges (for stats)
-    # -------------------------------------------------------------------------
-    
     async def get_challenges(self) -> List[Dict[str, Any]]:
-        """Get all challenges."""
         result = await self._request("GET", "/challenges")
         return result.get("data", [])
     
@@ -290,7 +218,6 @@ class CTFdClient:
         challenge_id: Optional[int] = None,
         type_filter: str = "correct",
     ) -> List[Dict[str, Any]]:
-        """Get submissions."""
         params = {"type": type_filter}
         if user_id:
             params["user_id"] = user_id
@@ -302,23 +229,10 @@ class CTFdClient:
 
 
 class CTFdSyncService:
-    """
-    Service for syncing data between ZeroPool and CTFd.
-    
-    This service handles:
-    1. Provisioning ZeroPool participants to CTFd
-    2. Syncing final rankings/scores from CTFd back to ZeroPool
-    """
+    """sync data between zeropool and ctfd: provision participants, pull final rankings."""
     
     def __init__(self, ctfd_url: str, api_key: str, db=None):
-        """
-        Initialize sync service.
-        
-        Args:
-            ctfd_url: CTFd instance URL
-            api_key: CTFd API key (decrypted)
-            db: Optional database session for updates
-        """
+        """db is an optional session, required by the sync/provision methods."""
         self.client = CTFdClient(ctfd_url, api_key)
         self.db = db
     
@@ -328,24 +242,12 @@ class CTFdSyncService:
         email: str,
         password: str,
     ) -> tuple[bool, Optional[int], Optional[str]]:
-        """
-        Provision a new user to CTFd.
-        
-        Args:
-            username: Username
-            email: Email address
-            password: Plain text password
-            
-        Returns:
-            Tuple of (success, ctfd_user_id, error_message)
-        """
+        """provision a user; returns (success, ctfd_user_id, error_message)."""
         try:
-            # Check if user already exists
             existing = await self.client.get_user_by_email(email)
             if existing:
                 return True, existing.get("id"), None
             
-            # Create user
             user = await self.client.create_user(
                 name=username,
                 email=email,
@@ -361,30 +263,8 @@ class CTFdSyncService:
             return False, None, str(e)
     
     async def sync_results_for_event(self, event_id: UUID) -> Dict[str, Any]:
-        """
-        Sync final results from CTFd and update participant/team rankings.
-        
-        This fetches the scoreboard from CTFd and:
-        1. Creates/updates teams in ZeroPool based on CTFd team data
-        2. Updates team rankings and scores
-        3. Tries to match participants by ctfd_user_id or name
-        
-        CTFd /scoreboard/top/{count} returns format:
-        {
-            "data": {
-                "1": {"id": 1, "name": "Team A", "score": 500, ...},
-                "2": {"id": 2, "name": "Team B", "score": 400, ...}
-            }
-        }
-        
-        Args:
-            event_id: The event ID to sync
-            
-        Returns:
-            Dict with sync statistics
-        """
+        """sync the ctfd scoreboard into zeropool: create/update teams, match participants by ctfd_user_id or name, update rankings and scores; returns sync stats."""
         from sqlalchemy import select, func
-        from sqlalchemy.dialects.postgresql import insert as pg_insert
         from app.models import Participant, Team, TeamMember, Event
         
         if not self.db:
@@ -400,7 +280,6 @@ class CTFdSyncService:
         }
         
         try:
-            # Get event settings
             result = await self.db.execute(
                 select(Event).where(Event.id == event_id)
             )
@@ -408,14 +287,13 @@ class CTFdSyncService:
             if not event:
                 raise ValueError("Event not found")
             
-            # Get scoreboard from CTFd (this returns teams OR users based on CTFd config)
+            # scoreboard is teams or users depending on ctfd config
             standings = await self.client.get_standings(count=1000)
             
             if not standings:
                 return stats
             
-            # Check if this is a team-based CTF by looking at the first entry
-            # CTFd team mode has "account_url" starting with "/teams/"
+            # team mode: account_url starts with "/teams/"
             first_entry = standings[0] if standings else {}
             is_team_ctf = first_entry.get("account_url", "").startswith("/teams/")
             
@@ -426,7 +304,6 @@ class CTFdSyncService:
                 account_name = entry.get("name", "")
                 
                 if is_team_ctf:
-                    # Team-based CTF: Create/update team in ZeroPool
                     team_result = await self.db.execute(
                         select(Team).where(
                             Team.event_id == event_id,
@@ -436,7 +313,6 @@ class CTFdSyncService:
                     team = team_result.scalar_one_or_none()
                     
                     if not team:
-                        # Try to find by name
                         team_result = await self.db.execute(
                             select(Team).where(
                                 Team.event_id == event_id,
@@ -446,7 +322,6 @@ class CTFdSyncService:
                         team = team_result.scalar_one_or_none()
                     
                     if not team:
-                        # Create new team
                         team = Team(
                             event_id=event_id,
                             name=account_name,
@@ -457,21 +332,20 @@ class CTFdSyncService:
                         self.db.add(team)
                         stats["teams_created"] += 1
                     else:
-                        # Update existing team
                         team.final_rank = rank
                         team.final_score = score
                         if not team.ctfd_team_id:
                             team.ctfd_team_id = account_id
                         stats["teams_updated"] += 1
                     
-                    # Try to match participants in this team by fetching team members from CTFd
+                    # match participants via ctfd team members
                     try:
                         members = await self.client.get_team_members(account_id)
                         for member in members:
                             member_name = member.get("name", "")
                             member_id = member.get("id")
                             
-                            # Try to match participant by ctfd_user_id first
+                            # match by ctfd_user_id first
                             participant = None
                             if member_id:
                                 p_result = await self.db.execute(
@@ -484,7 +358,7 @@ class CTFdSyncService:
                                 if participant:
                                     stats["participants_matched_by_id"] += 1
                             
-                            # Try by name match (case-insensitive)
+                            # match by name (case-insensitive)
                             if not participant and member_name:
                                 p_result = await self.db.execute(
                                     select(Participant).where(
@@ -497,14 +371,13 @@ class CTFdSyncService:
                                     stats["participants_matched_by_name"] += 1
                             
                             if participant:
-                                # Update participant with team's rank and score
                                 participant.final_rank = rank
                                 participant.final_score = score
                                 if not participant.ctfd_user_id and member_id:
                                     participant.ctfd_user_id = member_id
                                 stats["participants_updated"] += 1
                                 
-                                # Ensure participant is linked to team
+                                # ensure participant is linked to the team
                                 await self.db.flush()
                                 tm_result = await self.db.execute(
                                     select(TeamMember).where(
@@ -518,14 +391,13 @@ class CTFdSyncService:
                                         participant_id=participant.id,
                                     ))
                     except Exception:
-                        # Failed to get team members, continue
+                        # failed to get team members; continue
                         pass
                 
                 else:
-                    # User-based CTF: Match by ctfd_user_id or name
+                    # user-based: match by ctfd_user_id or name
                     participant = None
                     
-                    # First try by ctfd_user_id
                     if account_id:
                         p_result = await self.db.execute(
                             select(Participant).where(
@@ -537,7 +409,7 @@ class CTFdSyncService:
                         if participant:
                             stats["participants_matched_by_id"] += 1
                     
-                    # Try by name match (case-insensitive)
+                    # match by name (case-insensitive)
                     if not participant and account_name:
                         p_result = await self.db.execute(
                             select(Participant).where(
@@ -570,15 +442,7 @@ class CTFdSyncService:
             raise RuntimeError(f"CTFd sync failed: {str(e)}")
     
     async def provision_users_for_event(self, event_id: UUID) -> int:
-        """
-        Provision all verified participants to CTFd.
-        
-        Args:
-            event_id: The event ID
-            
-        Returns:
-            Number of users provisioned
-        """
+        """provision verified participants that lack a ctfd user; returns count provisioned."""
         import secrets
         from sqlalchemy import select
         from app.models import Participant
@@ -586,7 +450,6 @@ class CTFdSyncService:
         if not self.db:
             raise ValueError("Database session required")
         
-        # Get verified participants without ctfd_user_id
         result = await self.db.execute(
             select(Participant).where(
                 Participant.event_id == event_id,
@@ -598,7 +461,6 @@ class CTFdSyncService:
         
         provisioned = 0
         for p in participants:
-            # Generate a random password
             password = secrets.token_urlsafe(12)
             
             success, ctfd_id, error = await self.provision_user(
@@ -616,12 +478,7 @@ class CTFdSyncService:
         return provisioned
     
     async def get_user_rank(self, ctfd_user_id: int) -> Optional[tuple[int, int]]:
-        """
-        Get a user's final rank and score.
-        
-        Returns:
-            Tuple of (rank, score) or None if not found
-        """
+        """returns (rank, score) or none if the user isn't found."""
         standings = await self.client.get_standings(count=1000)
         
         for idx, entry in enumerate(standings, 1):
@@ -629,7 +486,6 @@ class CTFdSyncService:
             if account_id == ctfd_user_id:
                 return idx, entry.get("score", 0)
             
-            # Check team members
             if "team" in entry:
                 team_data = entry["team"]
                 members = await self.client.get_team_members(team_data["id"])
@@ -639,14 +495,9 @@ class CTFdSyncService:
         
         return None
     
-    # Keep old method for backwards compatibility
+    # legacy method kept for backwards compatibility
     async def sync_results(self) -> CTFdSyncResult:
-        """
-        Sync final results from CTFd (legacy method without DB update).
-        
-        Returns:
-            CTFdSyncResult with sync statistics
-        """
+        """sync results without db updates; returns a ctfdsyncresult."""
         try:
             standings = await self.client.get_standings(count=1000)
             users_synced = 0

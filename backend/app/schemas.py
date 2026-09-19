@@ -1,8 +1,4 @@
-"""
-Pydantic Schemas for API Request/Response
-
-Defines all data transfer objects used in the API.
-"""
+"""pydantic schemas for api request/response."""
 
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -11,19 +7,12 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 
-# =============================================================================
-# Base Schemas
-# =============================================================================
-
-
 class BaseResponse(BaseModel):
-    """Base response schema."""
     success: bool = True
     message: Optional[str] = None
 
 
 class PaginatedResponse(BaseResponse):
-    """Paginated response schema."""
     total: int
     page: int
     per_page: int
@@ -31,33 +20,26 @@ class PaginatedResponse(BaseResponse):
 
 
 class ErrorResponse(BaseModel):
-    """Error response schema."""
     success: bool = False
     error: str
     detail: Optional[Dict[str, Any]] = None
 
 
-# =============================================================================
-# Authentication Schemas
-# =============================================================================
-
-
 class LoginRequest(BaseModel):
-    """Login request for both users and participants."""
+    # login for both users and participants
     email: EmailStr
     password: str = Field(..., min_length=1)
     turnstile_token: Optional[str] = None
 
 
 class RegisterRequest(BaseModel):
-    """Participant registration request."""
     email: EmailStr
     username: str = Field(..., min_length=3, max_length=50)
     password: str = Field(..., min_length=8, max_length=128)
     name: Optional[str] = Field(None, max_length=255)
     event_slug: str = Field(..., min_length=1)
     turnstile_token: Optional[str] = None
-    
+
     @field_validator("username")
     @classmethod
     def validate_username(cls, v: str) -> str:
@@ -68,41 +50,31 @@ class RegisterRequest(BaseModel):
 
 
 class VerifyEmailRequest(BaseModel):
-    """Email verification request."""
     token: str
 
 
 class ResendVerificationRequest(BaseModel):
-    """Resend verification email request."""
     email: EmailStr
     event_slug: str
 
 
 class PasswordResetRequest(BaseModel):
-    """Password reset request."""
     email: EmailStr
 
 
 class PasswordResetConfirmRequest(BaseModel):
-    """Password reset confirmation."""
     token: str
     password: str = Field(..., min_length=8, max_length=128)
 
 
 class AuthResponse(BaseResponse):
-    """Authentication response."""
     user: Optional[Dict[str, Any]] = None
     participant: Optional[Dict[str, Any]] = None
-    event: Optional[Dict[str, Any]] = None  # Event info for post-verification
-
-
-# =============================================================================
-# User Schemas
-# =============================================================================
+    event: Optional[Dict[str, Any]] = None  # event info for post-verification
 
 
 class UserCreate(BaseModel):
-    """Create user request (admin only)."""
+    # admin only
     email: EmailStr
     username: str = Field(..., min_length=3, max_length=50)
     password: str = Field(..., min_length=8, max_length=128)
@@ -111,7 +83,6 @@ class UserCreate(BaseModel):
 
 
 class UserUpdate(BaseModel):
-    """Update user request."""
     email: Optional[EmailStr] = None
     username: Optional[str] = Field(None, min_length=3, max_length=50)
     name: Optional[str] = None
@@ -119,9 +90,8 @@ class UserUpdate(BaseModel):
 
 
 class UserResponse(BaseModel):
-    """User response."""
     model_config = ConfigDict(from_attributes=True)
-    
+
     id: UUID
     email: str
     username: str
@@ -132,35 +102,29 @@ class UserResponse(BaseModel):
     last_login_at: Optional[datetime]
 
 
-# =============================================================================
-# Event Schemas
-# =============================================================================
-
-
 class EventCreate(BaseModel):
-    """Create event request."""
     name: str = Field(..., min_length=1, max_length=255)
     slug: str = Field(..., min_length=1, max_length=100)
     description: Optional[str] = None
     registration_start: Optional[datetime] = None
     registration_end: Optional[datetime] = None
-    registration_open: Optional[datetime] = None  # Alias for registration_start
-    registration_close: Optional[datetime] = None  # Alias for registration_end
+    registration_open: Optional[datetime] = None  # alias for registration_start
+    registration_close: Optional[datetime] = None  # alias for registration_end
     event_start: Optional[datetime] = None
     event_end: Optional[datetime] = None
-    start_date: Optional[datetime] = None  # Alias for event_start
-    end_date: Optional[datetime] = None  # Alias for event_end
+    start_date: Optional[datetime] = None  # alias for event_start
+    end_date: Optional[datetime] = None  # alias for event_end
     ctfd_url: Optional[str] = None
     ctfd_api_key: Optional[str] = None
     settings: Optional[Dict[str, Any]] = None
-    
-    # Settings fields that frontend sends as top-level
+
+    # settings fields the frontend sends as top-level
     is_import_only: Optional[bool] = None
     team_mode: Optional[bool] = None
     max_participants: Optional[int] = None
     min_team_size: Optional[int] = None
     max_team_size: Optional[int] = None
-    
+
     @field_validator("slug")
     @classmethod
     def validate_slug(cls, v: str) -> str:
@@ -168,9 +132,8 @@ class EventCreate(BaseModel):
         if not re.match(r'^[a-z0-9-]+$', v):
             raise ValueError("Slug must contain only lowercase letters, numbers, and hyphens")
         return v
-    
+
     def get_settings(self) -> Dict[str, Any]:
-        """Build settings dict from top-level fields and settings dict."""
         s = self.settings.copy() if self.settings else {}
         if self.is_import_only is not None:
             s["is_import_only"] = self.is_import_only
@@ -183,43 +146,38 @@ class EventCreate(BaseModel):
         if self.max_team_size is not None:
             s["max_team_size"] = self.max_team_size
         return s
-    
+
     def get_registration_start(self) -> Optional[datetime]:
-        """Get registration start from either field."""
         return self.registration_start or self.registration_open
-    
+
     def get_registration_end(self) -> Optional[datetime]:
-        """Get registration end from either field."""
         return self.registration_end or self.registration_close
-    
+
     def get_event_start(self) -> Optional[datetime]:
-        """Get event start from either field."""
         return self.event_start or self.start_date
-    
+
     def get_event_end(self) -> Optional[datetime]:
-        """Get event end from either field."""
         return self.event_end or self.end_date
 
 
 class EventUpdate(BaseModel):
-    """Update event request."""
     name: Optional[str] = Field(None, max_length=255)
     slug: Optional[str] = Field(None, max_length=100)
     description: Optional[str] = None
     registration_start: Optional[datetime] = None
     registration_end: Optional[datetime] = None
-    registration_open: Optional[datetime] = None   # Alias for registration_start
-    registration_close: Optional[datetime] = None  # Alias for registration_end
+    registration_open: Optional[datetime] = None   # alias for registration_start
+    registration_close: Optional[datetime] = None  # alias for registration_end
     event_start: Optional[datetime] = None
     event_end: Optional[datetime] = None
-    start_date: Optional[datetime] = None  # Alias for event_start
-    end_date: Optional[datetime] = None    # Alias for event_end
+    start_date: Optional[datetime] = None  # alias for event_start
+    end_date: Optional[datetime] = None    # alias for event_end
     status: Optional[str] = None
     ctfd_url: Optional[str] = None
     ctfd_api_key: Optional[str] = None
     settings: Optional[Dict[str, Any]] = None
 
-    # Settings fields that frontend sends as top-level
+    # settings fields the frontend sends as top-level
     is_import_only: Optional[bool] = None
     team_mode: Optional[bool] = None
     max_participants: Optional[int] = None
@@ -241,7 +199,7 @@ class EventUpdate(BaseModel):
     )
     @classmethod
     def _empty_str_to_none(cls, v):
-        """Frontend sends empty datetime-local inputs as ""; treat as None."""
+        # frontend sends empty datetime-local inputs as ""; treat as none
         return None if v == "" else v
 
     def get_registration_start(self) -> Optional[datetime]:
@@ -258,9 +216,8 @@ class EventUpdate(BaseModel):
 
 
 class EventResponse(BaseModel):
-    """Event response."""
     model_config = ConfigDict(from_attributes=True)
-    
+
     id: UUID
     name: str
     slug: str
@@ -274,29 +231,23 @@ class EventResponse(BaseModel):
     ctfd_synced_at: Optional[datetime]
     settings: Dict[str, Any]
     created_at: datetime
-    
-    # Stats (populated separately)
+
+    # populated separately
     participant_count: Optional[int] = None
     verified_count: Optional[int] = None
     with_results_count: Optional[int] = None
 
-    # Computed fields for frontend convenience
+    # computed for frontend convenience
     is_import_only: Optional[bool] = None
     team_mode: Optional[bool] = None
 
 
 class EventListResponse(PaginatedResponse):
-    """Event list response."""
     events: List[EventResponse]
 
 
-# =============================================================================
-# Participant Schemas
-# =============================================================================
-
-
 class ParticipantCreate(BaseModel):
-    """Create participant (for import)."""
+    # for import
     email: EmailStr
     username: Optional[str] = Field(None, min_length=3, max_length=50)
     name: Optional[str] = None
@@ -304,7 +255,6 @@ class ParticipantCreate(BaseModel):
 
 
 class ParticipantUpdate(BaseModel):
-    """Update participant."""
     name: Optional[str] = None
     username: Optional[str] = None
     is_blocked: Optional[bool] = None
@@ -314,14 +264,12 @@ class ParticipantUpdate(BaseModel):
 
 
 class ParticipantBulkRankUpdate(BaseModel):
-    """Bulk update participant ranks."""
     participants: List[Dict[str, Any]]  # [{id: str, final_rank: int, final_score: int}]
 
 
 class ParticipantResponse(BaseModel):
-    """Participant response."""
     model_config = ConfigDict(from_attributes=True)
-    
+
     id: UUID
     email: str
     username: str
@@ -339,34 +287,25 @@ class ParticipantResponse(BaseModel):
 
 
 class ParticipantListResponse(PaginatedResponse):
-    """Participant list response."""
     participants: List[ParticipantResponse]
 
 
 class ParticipantImportRequest(BaseModel):
-    """Bulk import participants request."""
     participants: List[ParticipantCreate]
     send_notification: bool = False
     generate_passwords: bool = True
 
 
 class ParticipantImportResponse(BaseResponse):
-    """Bulk import response."""
     imported: int
     updated: int = 0
     skipped: int
     errors: List[Dict[str, Any]]
-    job_id: Optional[str] = None  # For background imports
+    job_id: Optional[str] = None  # for background imports
     message: Optional[str] = None
 
 
-# =============================================================================
-# Email Provider Schemas
-# =============================================================================
-
-
 class EmailProviderCreate(BaseModel):
-    """Create email provider."""
     name: str = Field(..., max_length=100)
     provider_type: str  # 'smtp', 'brevo', 'mailgun', 'aws_ses'
     config: Dict[str, Any]
@@ -379,7 +318,6 @@ class EmailProviderCreate(BaseModel):
 
 
 class EmailProviderUpdate(BaseModel):
-    """Update email provider."""
     name: Optional[str] = None
     config: Optional[Dict[str, Any]] = None
     daily_limit: Optional[int] = None
@@ -392,9 +330,8 @@ class EmailProviderUpdate(BaseModel):
 
 
 class EmailProviderResponse(BaseModel):
-    """Email provider response."""
     model_config = ConfigDict(from_attributes=True)
-    
+
     id: UUID
     name: str
     provider_type: str
@@ -409,32 +346,24 @@ class EmailProviderResponse(BaseModel):
     last_error: Optional[str]
     last_error_at: Optional[datetime]
     created_at: datetime
-    
-    # Usage stats (populated from Redis)
+
+    # populated from redis
     daily_used: Optional[int] = None
     hourly_used: Optional[int] = None
     available: Optional[bool] = None
 
 
 class EmailProviderTestRequest(BaseModel):
-    """Test email provider request."""
     recipient_email: EmailStr
 
 
 class EmailProviderTestResponse(BaseResponse):
-    """Test email provider response."""
     sent: bool
     message_id: Optional[str] = None
     error: Optional[str] = None
 
 
-# =============================================================================
-# Email Template Schemas
-# =============================================================================
-
-
 class EmailTemplateCreate(BaseModel):
-    """Create email template."""
     event_id: Optional[UUID] = None
     slug: str = Field(..., max_length=100)
     name: str = Field(..., max_length=255)
@@ -446,7 +375,6 @@ class EmailTemplateCreate(BaseModel):
 
 
 class EmailTemplateUpdate(BaseModel):
-    """Update email template."""
     name: Optional[str] = None
     description: Optional[str] = None
     subject: Optional[str] = None
@@ -457,9 +385,8 @@ class EmailTemplateUpdate(BaseModel):
 
 
 class EmailTemplateResponse(BaseModel):
-    """Email template response."""
     model_config = ConfigDict(from_attributes=True)
-    
+
     id: UUID
     event_id: Optional[UUID]
     slug: str
@@ -473,22 +400,15 @@ class EmailTemplateResponse(BaseModel):
     created_at: datetime
 
 
-# =============================================================================
-# Voucher Schemas
-# =============================================================================
-
-
 class VoucherPoolCreate(BaseModel):
-    """Create voucher pool."""
     name: str = Field(..., max_length=255)
     description: Optional[str] = None
     platform: Optional[str] = None
 
 
 class VoucherPoolResponse(BaseModel):
-    """Voucher pool response."""
     model_config = ConfigDict(from_attributes=True)
-    
+
     id: UUID
     event_id: UUID
     name: str
@@ -500,14 +420,12 @@ class VoucherPoolResponse(BaseModel):
 
 
 class VoucherUploadRequest(BaseModel):
-    """Bulk voucher upload request."""
     codes: List[str]
 
 
 class VoucherResponse(BaseModel):
-    """Voucher response."""
     model_config = ConfigDict(from_attributes=True)
-    
+
     id: UUID
     code: str
     status: str
@@ -515,13 +433,7 @@ class VoucherResponse(BaseModel):
     claimed_at: Optional[datetime]
 
 
-# =============================================================================
-# Prize Schemas
-# =============================================================================
-
-
 class PrizeRuleCreate(BaseModel):
-    """Create prize rule."""
     name: str = Field(..., max_length=255)
     description: Optional[str] = None
     rank_from: int = Field(..., ge=1)
@@ -533,9 +445,8 @@ class PrizeRuleCreate(BaseModel):
 
 
 class PrizeRuleResponse(BaseModel):
-    """Prize rule response."""
     model_config = ConfigDict(from_attributes=True)
-    
+
     id: UUID
     event_id: UUID
     name: str
@@ -550,9 +461,9 @@ class PrizeRuleResponse(BaseModel):
 
 
 class PrizeResponse(BaseModel):
-    """Prize response (for participants)."""
+    # for participants
     model_config = ConfigDict(from_attributes=True)
-    
+
     id: UUID
     prize_type: str
     prize_data: Dict[str, Any]
@@ -562,21 +473,14 @@ class PrizeResponse(BaseModel):
 
 
 class PrizeClaimRequest(BaseModel):
-    """Prize claim request."""
-    pass  # No body needed, just POST to claim
-
-
-# =============================================================================
-# Certificate Schemas
-# =============================================================================
+    pass  # no body needed, just post to claim
 
 
 class CertificateTemplateCreate(BaseModel):
-    """Create certificate template."""
-    event_id: Optional[UUID] = None  # None = global template (any event)
+    event_id: Optional[UUID] = None  # none = global template (any event)
     name: str = Field(..., max_length=255)
     description: Optional[str] = None
-    background_image: Optional[str] = None  # URL or base64 of background image
+    background_image: Optional[str] = None  # url or base64 of background image
     width: int = 1920
     height: int = 1080
     text_zones: List[Dict[str, Any]] = []
@@ -588,10 +492,9 @@ class CertificateTemplateCreate(BaseModel):
 
 
 class CertificateTemplateUpdate(BaseModel):
-    """Update certificate template."""
     name: Optional[str] = None
     description: Optional[str] = None
-    background_image: Optional[str] = None  # URL or base64 of background image
+    background_image: Optional[str] = None  # url or base64 of background image
     width: Optional[int] = None
     height: Optional[int] = None
     text_zones: Optional[List[Dict[str, Any]]] = None
@@ -604,15 +507,14 @@ class CertificateTemplateUpdate(BaseModel):
 
 
 class CertificateTemplateResponse(BaseModel):
-    """Certificate template response."""
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
-    event_id: Optional[UUID] = None  # None = global template
+    event_id: Optional[UUID] = None  # none = global template
     name: str
     description: Optional[str]
     template_file: Optional[str] = None
-    background_image: Optional[str] = None  # Computed URL for frontend preview
+    background_image: Optional[str] = None  # computed url for frontend preview
     width: int
     height: int
     text_zones: List[Dict[str, Any]]
@@ -626,19 +528,16 @@ class CertificateTemplateResponse(BaseModel):
 
 
 class CertificateCustomizeRequest(BaseModel):
-    """Certificate customization request."""
     display_name: str = Field(..., min_length=1, max_length=255)
 
 
 class CertificatePreviewRequest(BaseModel):
-    """Certificate preview request."""
     display_name: str = Field(..., min_length=1, max_length=255)
 
 
 class CertificateResponse(BaseModel):
-    """Certificate response."""
     model_config = ConfigDict(from_attributes=True)
-    
+
     id: UUID
     display_name: str
     team_name: Optional[str]
@@ -649,7 +548,7 @@ class CertificateResponse(BaseModel):
 
 
 class CertificateVerifyResponse(BaseModel):
-    """Certificate verification response (public)."""
+    # public
     valid: bool
     participant_name: Optional[str] = None
     team_name: Optional[str] = None
@@ -658,13 +557,7 @@ class CertificateVerifyResponse(BaseModel):
     issued_at: Optional[datetime] = None
 
 
-# =============================================================================
-# Campaign Schemas
-# =============================================================================
-
-
 class CampaignCreate(BaseModel):
-    """Create email campaign."""
     event_id: UUID
     template_id: UUID
     name: str = Field(..., max_length=255)
@@ -673,9 +566,8 @@ class CampaignCreate(BaseModel):
 
 
 class CampaignResponse(BaseModel):
-    """Campaign response."""
     model_config = ConfigDict(from_attributes=True)
-    
+
     id: UUID
     event_id: UUID
     name: str
@@ -692,13 +584,7 @@ class CampaignResponse(BaseModel):
     created_at: datetime
 
 
-# =============================================================================
-# Analytics Schemas
-# =============================================================================
-
-
 class DashboardStats(BaseModel):
-    """Dashboard statistics."""
     total_events: int
     active_events: int
     total_participants: int
@@ -709,8 +595,7 @@ class DashboardStats(BaseModel):
     certificates_downloaded: int
     total_prizes: int
     prizes_claimed: int
-    
-    # Provider stats
+
     providers_active: int
     providers_total: int
     daily_email_capacity: int
@@ -718,7 +603,6 @@ class DashboardStats(BaseModel):
 
 
 class EventStats(BaseModel):
-    """Event-specific statistics."""
     participant_count: int
     verified_count: int
     with_results_count: int

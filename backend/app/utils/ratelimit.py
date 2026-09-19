@@ -11,7 +11,7 @@ Fails OPEN on any Redis error: the failure is logged and the request is allowed.
 
 import logging
 import time
-from typing import Optional, Tuple
+from typing import Tuple
 
 from fastapi import Depends, HTTPException, Request, status
 

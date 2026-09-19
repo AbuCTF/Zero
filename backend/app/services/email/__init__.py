@@ -1,7 +1,3 @@
-"""
-Email services module.
-"""
-
 from app.services.email.orchestrator import (
     EmailMessage,
     EmailOrchestrator,
@@ -18,14 +14,12 @@ from app.services.email.templates import (
 )
 
 __all__ = [
-    # Orchestrator
     "EmailOrchestrator",
     "EmailMessage",
     "SendResult",
     "ProviderStatus",
     "ProviderHealth",
     "get_provider_instance",
-    # Templates
     "EmailTemplateRenderer",
     "render_email",
     "render_subject",

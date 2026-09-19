@@ -1,8 +1,4 @@
-"""
-ZeroPool Configuration
-
-All configuration is loaded from environment variables with sensible defaults.
-"""
+"""zeropool config; loaded from env vars with defaults."""
 
 import logging
 from functools import lru_cache
@@ -13,8 +9,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
 
-# Known insecure placeholder values shipped in defaults / .env.example.
-# If any of these are still in use at startup we warn loudly (but never crash).
+# known insecure placeholder values shipped in defaults / .env.example;
+# warn loudly (never crash) if any are still in use at startup
 _INSECURE_PLACEHOLDERS = {
     "admin_password": {"changeme123"},
     "secret_key": {"your-super-secret-key-change-this-in-production"},
@@ -24,8 +20,6 @@ _INSECURE_PLACEHOLDERS = {
 
 
 class Settings(BaseSettings):
-    """Application settings loaded from environment variables."""
-
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -33,9 +27,6 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # -------------------------------------------------------------------------
-    # Application
-    # -------------------------------------------------------------------------
     app_name: str = "ZeroPool"
     app_env: str = "development"
     debug: bool = False
@@ -43,35 +34,23 @@ class Settings(BaseSettings):
     app_url: str = "http://localhost:3000"
     api_url: str = "http://localhost:8000"
 
-    # -------------------------------------------------------------------------
-    # Database
-    # -------------------------------------------------------------------------
     database_url: str = Field(
         default="postgresql+asyncpg://zeropool:zeropool@localhost:5432/zeropool"
     )
 
     @property
     def database_url_sync(self) -> str:
-        """Synchronous database URL for Alembic migrations."""
+        # sync url for alembic migrations
         return self.database_url.replace("+asyncpg", "")
 
-    # -------------------------------------------------------------------------
-    # Redis
-    # -------------------------------------------------------------------------
     redis_url: str = "redis://localhost:6379/0"
 
-    # -------------------------------------------------------------------------
-    # Session
-    # -------------------------------------------------------------------------
     session_lifetime_hours: int = 24
     session_cookie_name: str = "zeropool_session"
     session_cookie_secure: bool = False
     session_cookie_httponly: bool = True
     session_cookie_samesite: str = "lax"
 
-    # -------------------------------------------------------------------------
-    # Security
-    # -------------------------------------------------------------------------
     password_hash_method: str = "pbkdf2:sha256"
     password_hash_iterations: int = 600000
     rate_limit_per_minute: int = 60
@@ -79,9 +58,6 @@ class Settings(BaseSettings):
     max_login_attempts: int = 5
     lockout_duration_minutes: int = 15
 
-    # -------------------------------------------------------------------------
-    # Cloudflare Turnstile
-    # -------------------------------------------------------------------------
     turnstile_site_key: Optional[str] = None
     turnstile_secret_key: Optional[str] = None
 
@@ -89,35 +65,26 @@ class Settings(BaseSettings):
     def turnstile_enabled(self) -> bool:
         return bool(self.turnstile_site_key and self.turnstile_secret_key)
 
-    # -------------------------------------------------------------------------
-    # Discord OAuth (participant identity verification)
-    # -------------------------------------------------------------------------
     discord_client_id: str = "1547022816937771028"
     discord_client_secret: Optional[str] = None
     discord_redirect_uri: str = "https://app.h7tex.com/api/auth/discord/callback"
     discord_min_account_age_days: int = 7
-    # Origins allowed to open the OAuth popup and receive its postMessage token.
+    # origins allowed to open the oauth popup and receive its postmessage token
     discord_popup_origins: str = (
         "https://2026.h7tex.com,https://app.h7tex.com,http://localhost:5173,http://localhost:3000"
     )
-    # When true, registration REQUIRES a valid Discord verification + the profile fields.
-    # Deploy the endpoints with this False, ship the new popup, verify, then flip to True.
+    # when true, registration requires a valid discord verification + profile fields;
+    # deploy endpoints with this false, ship the popup, verify, then flip to true
     discord_required: bool = False
 
     @property
     def discord_enabled(self) -> bool:
         return bool(self.discord_client_id and self.discord_client_secret)
 
-    # -------------------------------------------------------------------------
-    # Certificates
-    # -------------------------------------------------------------------------
     cert_salt: str = Field(default="change-this-salt")
     fonts_dir: str = "/app/fonts"
     certs_dir: str = "/app/storage/certificates"
 
-    # -------------------------------------------------------------------------
-    # File Storage
-    # -------------------------------------------------------------------------
     upload_dir: str = "/app/storage/uploads"
     max_upload_size_mb: int = 10
 
@@ -125,33 +92,18 @@ class Settings(BaseSettings):
     def max_upload_size_bytes(self) -> int:
         return self.max_upload_size_mb * 1024 * 1024
 
-    # -------------------------------------------------------------------------
-    # Encryption
-    # -------------------------------------------------------------------------
     encryption_key: Optional[str] = None
 
-    # -------------------------------------------------------------------------
-    # Email Defaults
-    # -------------------------------------------------------------------------
     email_from_name: str = "ZeroPool"
     email_from_address: str = "noreply@example.com"
 
-    # -------------------------------------------------------------------------
-    # Admin Bootstrap
-    # -------------------------------------------------------------------------
     admin_email: str = "admin@example.com"
     admin_username: str = "admin"
     admin_password: str = "changeme123"
 
-    # -------------------------------------------------------------------------
-    # Logging
-    # -------------------------------------------------------------------------
     log_level: str = "INFO"
     log_format: str = "json"
 
-    # -------------------------------------------------------------------------
-    # CORS
-    # -------------------------------------------------------------------------
     cors_origins: str = "http://localhost:3000,http://localhost:5173,https://h7tex.com,https://www.h7tex.com,https://2026.h7tex.com,https://app.h7tex.com"
 
     @property
@@ -168,10 +120,7 @@ class Settings(BaseSettings):
 
 
 def _warn_on_insecure_defaults(settings: "Settings") -> None:
-    """
-    Emit a startup WARNING (never crash) when secrets are left at their
-    known placeholder/default values.
-    """
+    # emit startup warning (never crash) when secrets left at placeholder/default values
     for field, placeholders in _INSECURE_PLACEHOLDERS.items():
         value = getattr(settings, field, None)
         if value in placeholders:
@@ -184,11 +133,6 @@ def _warn_on_insecure_defaults(settings: "Settings") -> None:
 
 @lru_cache
 def get_settings() -> Settings:
-    """
-    Get cached settings instance.
-
-    Uses lru_cache to ensure settings are only loaded once.
-    """
     settings = Settings()
     _warn_on_insecure_defaults(settings)
     return settings

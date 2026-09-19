@@ -1,12 +1,7 @@
-"""
-Certificates API Routes
-
-Endpoints for generating and verifying certificates.
-"""
+"""endpoints for generating and verifying certificates."""
 
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import FileResponse
@@ -26,9 +21,7 @@ from app.models import (
     TeamMember,
 )
 from app.schemas import (
-    BaseResponse,
     CertificateCustomizeRequest,
-    CertificatePreviewRequest,
     CertificateResponse,
     CertificateVerifyResponse,
 )
@@ -43,7 +36,6 @@ async def list_certificates(
     participant: Participant = Depends(require_verified_participant),
     db: AsyncSession = Depends(get_session),
 ):
-    """List all certificates for the current participant."""
     result = await db.execute(
         select(Certificate)
         .where(Certificate.participant_id == participant.id)
@@ -72,12 +64,7 @@ async def get_available_certificates(
     participant: Participant = Depends(require_verified_participant),
     db: AsyncSession = Depends(get_session),
 ):
-    """
-    Get certificate templates available for this participant.
-    
-    Based on their rank, different templates may be available.
-    """
-    # Get event
+    """templates available to this participant, filtered by their rank."""
     result = await db.execute(
         select(Event).where(Event.id == participant.event_id)
     )
@@ -86,7 +73,6 @@ async def get_available_certificates(
     if not event or event.status.value not in ["ended", "archived"]:
         return {"templates": [], "message": "Certificates not yet available"}
     
-    # Get templates for this event
     result = await db.execute(
         select(CertificateTemplate)
         .where(
@@ -97,11 +83,9 @@ async def get_available_certificates(
     )
     templates = result.scalars().all()
     
-    # Filter by participant's rank
     available = []
     for t in templates:
         if t.rank_from is None and t.rank_to is None:
-            # Generic template, available to all
             available.append(t)
         elif participant.final_rank:
             if t.rank_from and t.rank_to:
@@ -130,12 +114,7 @@ async def customize_certificate(
     participant: Participant = Depends(require_verified_participant),
     db: AsyncSession = Depends(get_session),
 ):
-    """
-    Customize and generate a certificate.
-    
-    Allows participant to set their display name (as it will appear on cert).
-    """
-    # Get template
+    """set the participant's display name and generate their certificate."""
     result = await db.execute(
         select(CertificateTemplate).where(
             CertificateTemplate.id == template_id,
@@ -150,7 +129,6 @@ async def customize_certificate(
             detail="Certificate template not found",
         )
     
-    # Verify participant can use this template
     if template.rank_from or template.rank_to:
         if participant.final_rank:
             if template.rank_from and participant.final_rank < template.rank_from:
@@ -164,7 +142,6 @@ async def customize_certificate(
                     detail="You are not eligible for this certificate",
                 )
     
-    # Get team name if in team
     team_name = None
     result = await db.execute(
         select(TeamMember).where(TeamMember.participant_id == participant.id)
@@ -179,7 +156,6 @@ async def customize_certificate(
         if team:
             team_name = team.name
     
-    # Check if certificate already exists for this template
     result = await db.execute(
         select(Certificate).where(
             Certificate.participant_id == participant.id,
@@ -189,12 +165,10 @@ async def customize_certificate(
     existing = result.scalar_one_or_none()
     
     if existing:
-        # Update display name
         existing.display_name = data.display_name
         existing.team_name = team_name
         cert = existing
     else:
-        # Generate verification code
         from app.utils.security import generate_certificate_code
         
         verification_code = generate_certificate_code(
@@ -203,7 +177,6 @@ async def customize_certificate(
             datetime.utcnow(),
         )
         
-        # Create certificate record
         cert = Certificate(
             participant_id=participant.id,
             template_id=template.id,
@@ -216,10 +189,8 @@ async def customize_certificate(
     
     await db.flush()
     
-    # Generate the certificate file
     generator = CertificateGenerator()
     
-    # Get event for name
     result = await db.execute(
         select(Event).where(Event.id == template.event_id)
     )
@@ -251,7 +222,6 @@ async def customize_certificate(
         cert.generated_at = datetime.utcnow()
         await db.flush()
         
-        # Log generation
         audit_log = AuditLog(
             action="certificate.generate",
             participant_id=participant.id,
@@ -281,7 +251,6 @@ async def download_certificate(
     participant: Participant = Depends(require_verified_participant),
     db: AsyncSession = Depends(get_session),
 ):
-    """Download a generated certificate."""
     result = await db.execute(
         select(Certificate).where(
             Certificate.verification_code == verification_code,
@@ -309,18 +278,16 @@ async def download_certificate(
             detail="Certificate file not found",
         )
     
-    # Update download count and lock name
     cert.download_count += 1
     if not cert.downloaded_at:
         cert.downloaded_at = datetime.utcnow()
     
-    # Lock the name on first download to prevent abuse
+    # lock name on first download to prevent abuse
     if not cert.name_locked:
         cert.name_locked = True
     
     await db.flush()
     
-    # Log download
     audit_log = AuditLog(
         action="certificate.download",
         participant_id=participant.id,
@@ -332,7 +299,6 @@ async def download_certificate(
     db.add(audit_log)
     await db.flush()
     
-    # Determine media type
     if file_path.suffix == ".pdf":
         media_type = "application/pdf"
     else:
@@ -345,21 +311,12 @@ async def download_certificate(
     )
 
 
-# =============================================================================
-# Public Verification
-# =============================================================================
-
-
 @router.get("/verify/{code}", response_model=CertificateVerifyResponse)
 async def verify_certificate(
     code: str,
     db: AsyncSession = Depends(get_session),
 ):
-    """
-    Publicly verify a certificate by its code.
-    
-    This endpoint is public and does not require authentication.
-    """
+    """public endpoint; verifies a certificate by code, no authentication required."""
     result = await db.execute(
         select(Certificate).where(Certificate.verification_code == code)
     )
@@ -368,13 +325,11 @@ async def verify_certificate(
     if not cert:
         return CertificateVerifyResponse(valid=False)
     
-    # Get participant for basic info
     result = await db.execute(
         select(Participant).where(Participant.id == cert.participant_id)
     )
     participant = result.scalar_one_or_none()
     
-    # Get event name
     event_name = None
     if participant:
         result = await db.execute(
@@ -384,7 +339,6 @@ async def verify_certificate(
         if event:
             event_name = event.name
     
-    # Log verification
     audit_log = AuditLog(
         action="certificate.verify",
         actor_type="system",

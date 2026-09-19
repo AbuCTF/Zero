@@ -1,12 +1,4 @@
-"""
-Authentication API Routes
-
-Handles:
-- Admin user login/logout
-- Participant registration and login
-- Email verification
-- Password reset
-"""
+"""authentication api routes: admin + participant login, registration, email verification, password reset."""
 
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -26,8 +18,6 @@ from app.api.deps import (
     get_current_user,
     get_redis,
     get_user_agent,
-    require_participant,
-    require_user,
 )
 from app.config import get_settings
 from app.database import get_session
@@ -55,7 +45,6 @@ from app.utils.ratelimit import rate_limit
 from app.utils.security import (
     generate_verification_token,
     hash_password,
-    is_valid_email,
     is_valid_username,
     verify_password,
 )
@@ -69,22 +58,10 @@ router = APIRouter()
 settings = get_settings()
 
 
-# =============================================================================
-# Admin User Authentication
-# =============================================================================
-
-
 async def _is_admin_login_locked(redis, user_id, ip: str) -> bool:
-    """
-    Return True if the given (admin user, IP) pair — or the IP as a whole — is
-    currently locked out from logging in.
-
-    The hard lock is keyed by (user_id, ip) so that an attacker from one IP can
-    never lock the real admin out globally; a separate, higher-threshold per-IP
-    counter blunts a single IP hammering many accounts.
-
-    Fails open (returns False) on any Redis error.
-    """
+    """true if (admin user, ip) or the ip as a whole is locked out. hard lock is keyed by
+    (user_id, ip) so one attacker ip can't lock the real admin out globally; a separate,
+    higher-threshold per-ip counter blunts one ip hammering many accounts. fails open on redis error."""
     if redis is None:
         return False
     try:
@@ -104,13 +81,9 @@ async def _is_admin_login_locked(redis, user_id, ip: str) -> bool:
 
 
 async def _register_admin_login_failure(redis, user_id, ip: str) -> bool:
-    """
-    Record a failed admin login attempt for (user_id, ip).
-
-    Returns True only on the failure that *crosses* the lockout threshold, so the
-    caller writes exactly one ``account.locked`` audit record. Fails open
-    (returns False) on any Redis error.
-    """
+    """record a failed admin login attempt for (user_id, ip). returns true only on the failure that
+    crosses the lockout threshold, so the caller writes exactly one account.locked audit record.
+    fails open on redis error."""
     if redis is None:
         return False
     try:
@@ -135,7 +108,7 @@ async def _register_admin_login_failure(redis, user_id, ip: str) -> bool:
 
 
 async def _clear_admin_login_failures(redis, user_id, ip: str) -> None:
-    """Clear all admin lockout counters/flags for (user_id, ip) after success."""
+    """clear admin lockout counters/flags for (user_id, ip) after success."""
     if redis is None:
         return
     try:
@@ -160,38 +133,31 @@ async def login(
     db: AsyncSession = Depends(get_session),
     redis=Depends(get_redis),
 ):
-    """
-    Login for admin users and participants.
-
-    Determines account type by checking users table first, then participants.
-    """
-    # Verify captcha (no-op unless Turnstile is configured)
+    """login for admin users and participants; checks users table first, then participants."""
+    # verify captcha (no-op unless turnstile configured)
     await verify_turnstile(data.turnstile_token, get_client_ip(request))
 
-    # Try to find admin user
     result = await db.execute(
         select(User).where(User.email == data.email.lower())
     )
     user = result.scalar_one_or_none()
-    
+
     if user:
         client_ip = get_client_ip(request) or "unknown"
 
-        # Enforce lockout before checking the password
+        # enforce lockout before checking password
         if await _is_admin_login_locked(redis, user.id, client_ip):
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail="Account temporarily locked. Try again later.",
             )
 
-        # Verify password
         if not verify_password(data.password, user.password_hash):
-            # Track the failure; True only when this attempt crosses the threshold
+            # true only when this attempt crosses the lockout threshold
             just_locked = await _register_admin_login_failure(
                 redis, user.id, client_ip
             )
 
-            # Log failed attempt
             await _log_audit(
                 db,
                 action="account.login_failed",
@@ -230,30 +196,25 @@ async def login(
                 detail="Account is disabled",
             )
         
-        # Create session
         session_id = await create_session(
             db,
             user_id=user.id,
             ip_address=get_client_ip(request),
             user_agent=get_user_agent(request),
         )
-        
-        # Update last login
+
         user.last_login_at = datetime.now(timezone.utc)
         await db.flush()
 
-        # Clear any lockout counters for this account/IP on success
         await _clear_admin_login_failures(redis, user.id, client_ip)
 
-        # Log success
         await _log_audit(
             db,
             action="account.login",
             user_id=user.id,
             ip_address=client_ip,
         )
-        
-        # Set cookie
+
         response.set_cookie(
             key=settings.session_cookie_name,
             value=session_id,
@@ -275,26 +236,22 @@ async def login(
             },
         )
     
-    # Try to find participant (needs event context in real scenario)
-    # For now, search across all events
+    # find participant by email across all events
     result = await db.execute(
         select(Participant).where(Participant.email == data.email.lower())
     )
     participant = result.scalar_one_or_none()
-    
+
     if participant:
-        # Check lockout
         if participant.locked_until and participant.locked_until > datetime.now(timezone.utc):
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail="Account temporarily locked. Try again later.",
             )
         
-        # Verify password
         if not verify_password(data.password, participant.password_hash):
-            # Increment failed attempts
             participant.login_attempts += 1
-            
+
             if participant.login_attempts >= settings.max_login_attempts:
                 participant.locked_until = datetime.now(timezone.utc) + timedelta(
                     minutes=settings.lockout_duration_minutes
@@ -313,29 +270,25 @@ async def login(
                 detail="Account is blocked",
             )
         
-        # Reset login attempts on success
         participant.login_attempts = 0
         participant.locked_until = None
-        
-        # Create session
+
         session_id = await create_session(
             db,
             participant_id=participant.id,
             ip_address=get_client_ip(request),
             user_agent=get_user_agent(request),
         )
-        
+
         await db.flush()
-        
-        # Log success
+
         await _log_audit(
             db,
             action="account.login",
             participant_id=participant.id,
             ip_address=get_client_ip(request),
         )
-        
-        # Set cookie
+
         response.set_cookie(
             key=settings.session_cookie_name,
             value=session_id,
@@ -357,7 +310,6 @@ async def login(
             },
         )
     
-    # Neither found
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Invalid email or password",
@@ -370,12 +322,11 @@ async def logout(
     db: AsyncSession = Depends(get_session),
     session: Session = Depends(get_current_session),
 ):
-    """Logout current user/participant."""
     if session:
         await delete_session(db, session.id)
-    
+
     response.delete_cookie(settings.session_cookie_name)
-    
+
     return BaseResponse(success=True, message="Logged out successfully")
 
 
@@ -384,7 +335,6 @@ async def get_me(
     user: User = Depends(get_current_user),
     participant: Participant = Depends(get_current_participant),
 ):
-    """Get current authenticated user/participant."""
     if user:
         return AuthResponse(
             success=True,
@@ -415,11 +365,6 @@ async def get_me(
     )
 
 
-# =============================================================================
-# Participant Registration
-# =============================================================================
-
-
 @router.post(
     "/register",
     response_model=AuthResponse,
@@ -431,39 +376,27 @@ async def register(
     db: AsyncSession = Depends(get_session),
     redis=Depends(get_redis),
 ):
-    """
-    Register a new participant for an event.
-
-    Flow:
-    1. Validate input
-    2. Check event exists and registration is open
-    3. Create participant with unverified email
-    4. Send verification email
-    5. Return success (user must verify email to continue)
-    """
-    # Verify captcha (no-op unless Turnstile is configured)
+    """register a new participant for an event: creates an unverified account and sends a verification email."""
+    # verify captcha (no-op unless turnstile configured)
     await verify_turnstile(data.turnstile_token, get_client_ip(request))
 
-    # Validate username
     if not is_valid_username(data.username):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid username format",
         )
     
-    # Find event
     result = await db.execute(
         select(Event).where(Event.slug == data.event_slug.lower())
     )
     event = result.scalar_one_or_none()
-    
+
     if not event:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Event not found",
         )
-    
-    # Check registration is open
+
     if event.status != EventStatus.REGISTRATION:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -476,7 +409,6 @@ async def register(
             detail="Registration has ended",
         )
     
-    # Check for existing participant
     result = await db.execute(
         select(Participant).where(
             Participant.event_id == event.id,
@@ -501,9 +433,8 @@ async def register(
             detail="Username already taken",
         )
     
-    # Create participant
     verification_token = generate_verification_token()
-    
+
     participant = Participant(
         event_id=event.id,
         email=data.email.lower(),
@@ -518,8 +449,7 @@ async def register(
     
     db.add(participant)
     await db.flush()
-    
-    # Log registration
+
     await _log_audit(
         db,
         action="account.register",
@@ -527,8 +457,7 @@ async def register(
         ip_address=get_client_ip(request),
         metadata={"event_id": str(event.id)},
     )
-    
-    # Send verification email (async via queue in production)
+
     verification_url = f"{settings.app_url}/verify?token={verification_token}"
     
     await _send_verification_email(
@@ -555,15 +484,7 @@ async def verify_email(
     db: AsyncSession = Depends(get_session),
     redis=Depends(get_redis),
 ):
-    """
-    Verify participant email address.
-    
-    On success:
-    1. Mark email as verified
-    2. Provision user to CTFd (if configured)
-    3. Create session and log user in
-    """
-    # Find participant by token
+    """verify participant email address, then create a session and log the participant in."""
     result = await db.execute(
         select(Participant).where(
             Participant.email_verification_token == data.token,
@@ -578,7 +499,6 @@ async def verify_email(
             detail="Invalid or expired verification token",
         )
     
-    # Check token age (24 hours)
     if participant.email_verification_sent_at:
         token_age = datetime.now(timezone.utc) - participant.email_verification_sent_at
         if token_age > timedelta(hours=24):
@@ -586,21 +506,18 @@ async def verify_email(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Verification token has expired. Please request a new one.",
             )
-    
-    # Mark as verified
+
     participant.email_verified = True
     participant.email_verified_at = datetime.now(timezone.utc)
     participant.email_verification_token = None
-    
+
     await db.flush()
-    
-    # Fetch event info for the response
+
     event_result = await db.execute(
         select(Event).where(Event.id == participant.event_id)
     )
     event = event_result.scalar_one_or_none()
-    
-    # Log verification
+
     await _log_audit(
         db,
         action="account.verify_email",
@@ -608,22 +525,16 @@ async def verify_email(
         ip_address=get_client_ip(request),
     )
 
-    # Send welcome email now that the account is verified
     if event:
         await _send_welcome_email(db, redis, participant, event)
 
-    # TODO: Provision to CTFd if configured
-    # This should be done in background task
-    
-    # Create session
     session_id = await create_session(
         db,
         participant_id=participant.id,
         ip_address=get_client_ip(request),
         user_agent=get_user_agent(request),
     )
-    
-    # Set cookie
+
     response.set_cookie(
         key=settings.session_cookie_name,
         value=session_id,
@@ -632,8 +543,7 @@ async def verify_email(
         samesite=settings.session_cookie_samesite,
         max_age=settings.session_lifetime_hours * 3600,
     )
-    
-    # Build event info for response
+
     event_info = None
     if event:
         event_settings = event.settings or {}
@@ -670,21 +580,18 @@ async def resend_verification(
     db: AsyncSession = Depends(get_session),
     redis=Depends(get_redis),
 ):
-    """Resend verification email."""
-    # Find event
     result = await db.execute(
         select(Event).where(Event.slug == data.event_slug.lower())
     )
     event = result.scalar_one_or_none()
-    
+
     if not event:
-        # Don't reveal if event exists
+        # don't reveal if event exists
         return BaseResponse(
             success=True,
             message="If the email is registered, a verification email has been sent.",
         )
     
-    # Find participant
     result = await db.execute(
         select(Participant).where(
             Participant.event_id == event.id,
@@ -692,15 +599,15 @@ async def resend_verification(
         )
     )
     participant = result.scalar_one_or_none()
-    
+
     if not participant or participant.email_verified:
-        # Don't reveal account status
+        # don't reveal account status
         return BaseResponse(
             success=True,
             message="If the email is registered, a verification email has been sent.",
         )
-    
-    # Rate limit: max 1 email per 5 minutes
+
+    # rate limit: max 1 email per 5 minutes
     if participant.email_verification_sent_at:
         time_since_last = datetime.now(timezone.utc) - participant.email_verification_sent_at
         if time_since_last < timedelta(minutes=5):
@@ -709,11 +616,9 @@ async def resend_verification(
                 detail="Please wait before requesting another verification email",
             )
     
-    # Generate new token
     verification_token = generate_verification_token()
     participant.email_verification_token = verification_token
     participant.email_verification_sent_at = datetime.now(timezone.utc)
-    # Send email
     verification_url = f"{settings.app_url}/verify?token={verification_token}"
     await _send_verification_email(db, redis, participant, event, verification_url)
     
@@ -721,11 +626,6 @@ async def resend_verification(
         success=True,
         message="If the email is registered, a verification email has been sent.",
     )
-
-
-# =============================================================================
-# Helper Functions
-# =============================================================================
 
 
 async def _log_audit(
@@ -736,7 +636,6 @@ async def _log_audit(
     ip_address=None,
     metadata=None,
 ):
-    """Log an audit event."""
     log = AuditLog(
         action=action,
         user_id=user_id,
@@ -756,23 +655,20 @@ async def _send_verification_email(
     event: Event,
     verification_url: str,
 ):
-    """Send verification email to participant."""
     from app.models import EmailProvider
-    
-    # Get active providers
+
     result = await db.execute(
         select(EmailProvider).where(
             EmailProvider.is_active == True
         ).order_by(EmailProvider.priority)
     )
     providers = result.scalars().all()
-    
+
     if not providers:
-        # Log warning but don't fail registration
+        # log warning but don't fail registration
         print("Warning: No email providers configured")
         return
-    
-    # Prepare provider configs
+
     provider_configs = [
         {
             "id": p.id,
@@ -787,25 +683,23 @@ async def _send_verification_email(
         }
         for p in providers
     ]
-    
-    # Render email
+
     from app.services.email.templates import DEFAULT_TEMPLATES
-    
+
     template = DEFAULT_TEMPLATES["verification"]
     variables = {
         "event_name": event.name,
         "username": participant.username,
         "verification_url": verification_url,
     }
-    
+
     body_html, body_text = render_email(
         template["body_html"],
         variables,
         template["body_text"],
     )
     subject = render_subject(template["subject"], variables)
-    
-    # Create message
+
     message = EmailMessage(
         to=participant.email,
         subject=subject,
@@ -814,12 +708,10 @@ async def _send_verification_email(
         participant_id=participant.id,
         template_slug="verification",
     )
-    
-    # Send via orchestrator
+
     orchestrator = EmailOrchestrator(redis)
     result = await orchestrator.send(message, provider_configs)
-    
-    # Log email
+
     email_log = EmailLog(
         recipient_email=participant.email,
         participant_id=participant.id,
@@ -836,9 +728,7 @@ async def _send_verification_email(
     await db.flush()
 
 
-# =============================================================================
-# Discord OAuth — participant identity verification (used by the registration popup)
-# =============================================================================
+# discord oauth — participant identity verification, used by the registration popup
 
 
 @router.get(
@@ -846,12 +736,9 @@ async def _send_verification_email(
     dependencies=[Depends(rate_limit("auth:discord-authorize", (15, 60), (100, 3600)))],
 )
 async def discord_authorize(origin: str):
-    """
-    Begin Discord OAuth for registration identity verification.
-
-    ``origin`` is the lander origin that opened the popup; it is validated against an
-    allowlist and signed into the OAuth ``state`` so the callback can postMessage back to it.
-    """
+    """begin discord oauth for registration identity verification. origin is the lander origin that
+    opened the popup; it is validated against an allowlist and signed into the oauth state so the
+    callback can postmessage back to it."""
     if not settings.discord_enabled:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -869,7 +756,7 @@ async def discord_callback(
     state: Optional[str] = None,
     error: Optional[str] = None,
 ):
-    """Discord redirects here; postMessage a verify token (or an error) back to the popup opener."""
+    """discord redirects here; postmessage a verify token (or an error) back to the popup opener."""
     origin = discord_oauth.read_state(state) if state else None
     if not origin or not discord_oauth.popup_origin_allowed(origin):
         return HTMLResponse(
@@ -922,10 +809,8 @@ async def _send_welcome_email(
     participant: Participant,
     event: Event,
 ):
-    """Send welcome email to participant after email verification."""
     from app.models import EmailProvider
 
-    # Get active providers
     result = await db.execute(
         select(EmailProvider).where(
             EmailProvider.is_active == True
@@ -934,11 +819,10 @@ async def _send_welcome_email(
     providers = result.scalars().all()
 
     if not providers:
-        # Log warning but don't fail verification
+        # log warning but don't fail verification
         print("Warning: No email providers configured")
         return
 
-    # Prepare provider configs
     provider_configs = [
         {
             "id": p.id,
@@ -954,7 +838,6 @@ async def _send_welcome_email(
         for p in providers
     ]
 
-    # Render email
     from app.services.email.templates import DEFAULT_TEMPLATES
 
     event_settings = event.settings or {}
@@ -974,7 +857,6 @@ async def _send_welcome_email(
     )
     subject = render_subject(template["subject"], variables)
 
-    # Create message
     message = EmailMessage(
         to=participant.email,
         subject=subject,
@@ -984,11 +866,9 @@ async def _send_welcome_email(
         template_slug="welcome",
     )
 
-    # Send via orchestrator
     orchestrator = EmailOrchestrator(redis)
     result = await orchestrator.send(message, provider_configs)
 
-    # Log email
     email_log = EmailLog(
         recipient_email=participant.email,
         participant_id=participant.id,
@@ -1015,7 +895,7 @@ async def _send_password_reset_email(
     event_name: Optional[str] = None,
     participant_id=None,
 ):
-    """Send a password reset email via the provider pool. No-op if none configured."""
+    """send a password reset email via the provider pool; no-op if none configured."""
     from app.models import EmailProvider
     from app.services.email.templates import DEFAULT_TEMPLATES
 
@@ -1108,27 +988,20 @@ async def forgot_password(
     db: AsyncSession = Depends(get_session),
     redis=Depends(get_redis),
 ):
-    """
-    Request password reset for participant or admin.
-    Always returns success to prevent email enumeration.
-    """
+    """request password reset for participant or admin; always returns success to prevent email enumeration."""
     import secrets
-    
+
     email = data.email.lower().strip()
-    
-    # Check if it's an admin user
+
     result = await db.execute(select(User).where(User.email == email))
     user = result.scalar_one_or_none()
-    
+
     if user:
-        # Generate reset token for admin
         token = secrets.token_urlsafe(32)
         await redis.setex(f"password_reset:admin:{token}", 3600, str(user.id))
-        
-        # Build reset URL
+
         reset_url = f"{settings.app_url}/reset-password?token={token}"
-        
-        # Send password reset email via the provider pool
+
         await _send_password_reset_email(
             db,
             redis,
@@ -1136,8 +1009,7 @@ async def forgot_password(
             name=user.username,
             reset_url=reset_url,
         )
-        
-        # Log the request
+
         audit_log = AuditLog(
             action="auth.password_reset_request",
             user_id=user.id,
@@ -1151,8 +1023,7 @@ async def forgot_password(
         await db.flush()
 
         return BaseResponse(success=True, message="If an account exists, a reset link has been sent")
-    
-    # Check if it's a participant
+
     if data.event_slug:
         result = await db.execute(select(Event).where(Event.slug == data.event_slug))
         event = result.scalar_one_or_none()
@@ -1196,10 +1067,9 @@ async def reset_password(
     db: AsyncSession = Depends(get_session),
     redis=Depends(get_redis),
 ):
-    """Reset password using token."""
     token = data.token.strip()
-    
-    # Check admin reset
+
+    # check admin reset
     admin_data = await redis.get(f"password_reset:admin:{token}")
     if admin_data:
         user_id = admin_data.decode() if isinstance(admin_data, bytes) else admin_data
@@ -1224,7 +1094,7 @@ async def reset_password(
             
             return BaseResponse(success=True, message="Password reset successfully")
     
-    # Check participant reset
+    # check participant reset
     participant_data = await redis.get(f"password_reset:participant:{token}")
     if participant_data:
         data_str = participant_data.decode() if isinstance(participant_data, bytes) else participant_data

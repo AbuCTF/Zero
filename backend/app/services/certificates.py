@@ -1,16 +1,6 @@
-"""
-Certificate Generation Service
+"""generate pdf/png certificates from templates with text zones and qr codes."""
 
-Generates PDF/PNG certificates with:
-- Template support
-- Configurable text placement
-- QR code verification
-- Custom fonts
-"""
-
-import hashlib
 import io
-import os
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -19,7 +9,6 @@ from uuid import UUID
 
 import qrcode
 from PIL import Image, ImageDraw, ImageFont
-from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 
@@ -31,13 +20,12 @@ settings = get_settings()
 
 @dataclass
 class TextZone:
-    """Configuration for a text placement zone on certificate."""
     id: str
     field: str  # 'name', 'team', 'rank', 'date', 'verification_code'
-    x: float  # X position (percentage or pixels)
-    y: float  # Y position
-    width: float  # Max width
-    height: float  # Max height
+    x: float
+    y: float
+    width: float
+    height: float
     font_family: str = "Helvetica"
     font_size: int = 24
     font_color: str = "#000000"
@@ -48,7 +36,6 @@ class TextZone:
 
 @dataclass
 class QRZone:
-    """Configuration for QR code placement."""
     x: float
     y: float
     size: float
@@ -57,7 +44,6 @@ class QRZone:
 
 @dataclass
 class CertificateData:
-    """Data for generating a certificate."""
     participant_id: UUID
     display_name: str
     team_name: Optional[str] = None
@@ -73,7 +59,6 @@ class CertificateData:
 
 @dataclass
 class CertificateResult:
-    """Result of certificate generation."""
     success: bool
     file_path: Optional[str] = None
     verification_code: Optional[str] = None
@@ -81,27 +66,15 @@ class CertificateResult:
 
 
 class CertificateGenerator:
-    """
-    Certificate generator with template support.
-    
-    Features:
-    - Load template images (PNG, JPG, PDF)
-    - Configure text zones with drag-drop UI
-    - Generate QR codes for verification
-    - Output as PDF or PNG
-    """
-    
     def __init__(self, fonts_dir: str = None, output_dir: str = None):
         self.fonts_dir = Path(fonts_dir or settings.fonts_dir)
         self.output_dir = Path(output_dir or settings.certs_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         
-        # Font cache
         self._fonts: Dict[str, str] = {}
         self._load_fonts()
     
     def _load_fonts(self) -> None:
-        """Load available fonts from fonts directory."""
         if not self.fonts_dir.exists():
             return
         
@@ -114,15 +87,12 @@ class CertificateGenerator:
             self._fonts[font_name.lower()] = str(font_file)
     
     def get_available_fonts(self) -> List[str]:
-        """Get list of available font names."""
         return list(self._fonts.keys())
     
     def _get_font_path(self, font_family: str) -> Optional[str]:
-        """Get path to font file."""
         return self._fonts.get(font_family.lower())
     
     def _hex_to_rgb(self, hex_color: str) -> Tuple[int, int, int]:
-        """Convert hex color to RGB tuple."""
         hex_color = hex_color.lstrip("#")
         return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
     
@@ -132,7 +102,6 @@ class CertificateGenerator:
         cert_type: str = "participation",
         issued_at: datetime = None,
     ) -> str:
-        """Generate unique verification code for certificate."""
         if issued_at is None:
             issued_at = datetime.utcnow()
         
@@ -147,7 +116,6 @@ class CertificateGenerator:
         verification_url: str,
         size: int = 150,
     ) -> Image.Image:
-        """Create QR code image."""
         qr = qrcode.QRCode(
             version=1,
             error_correction=qrcode.constants.ERROR_CORRECT_L,
@@ -168,38 +136,22 @@ class CertificateGenerator:
         qr_zone: Optional[QRZone] = None,
         verification_url_base: str = "",
     ) -> CertificateResult:
-        """
-        Generate certificate as PNG.
-        
-        Args:
-            template_path: Path to template image
-            data: Certificate data
-            text_zones: Text placement configurations
-            qr_zone: QR code placement configuration
-            verification_url_base: Base URL for verification
-            
-        Returns:
-            CertificateResult with file path and verification code
-        """
         try:
-            # Load template
             template = Image.open(template_path)
             template = template.convert("RGBA")
             width, height = template.size
             
-            # Create drawing context
             draw = ImageDraw.Draw(template)
             
-            # Generate verification code
             verification_code = self.generate_verification_code(
                 data.participant_id,
                 "participation" if not data.rank or data.rank > 15 else "winner",
                 data.issued_at,
             )
             
-            # Prepare field values - support both naming conventions
+            # field values under both naming conventions
             field_values = {
-                # Short names (legacy)
+                # short names (legacy)
                 "name": data.display_name,
                 "team": data.team_name or "",
                 "rank": f"#{data.rank}" if data.rank else "",
@@ -207,19 +159,17 @@ class CertificateGenerator:
                 "event": data.event_name,
                 "date": data.issued_at.strftime("%B %d, %Y"),
                 "verification_code": verification_code,
-                # Full names (frontend uses these)
+                # full names (frontend uses these)
                 "participant_name": data.display_name,
                 "team_name": data.team_name or "",
                 "event_name": data.event_name,
             }
             
-            # Draw text zones
             for zone in text_zones:
                 text = field_values.get(zone.field, "")
                 if not text:
                     continue
                 
-                # Calculate position
                 if zone.is_percentage:
                     x = int(zone.x / 100 * width)
                     y = int(zone.y / 100 * height)
@@ -229,14 +179,13 @@ class CertificateGenerator:
                     y = int(zone.y)
                     max_width = int(zone.width)
                 
-                # Load font
                 font_path = self._get_font_path(zone.font_family)
                 font = None
                 
                 if font_path:
                     font = ImageFont.truetype(font_path, zone.font_size)
                 else:
-                    # Try common fallback fonts (Vera.ttf from reportlab is reliable)
+                    # fallback fonts (reportlab's vera.ttf is reliable)
                     fallback_fonts = [
                         "/usr/local/lib/python3.11/site-packages/reportlab/fonts/Vera.ttf",
                         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
@@ -251,13 +200,11 @@ class CertificateGenerator:
                             continue
                     
                     if font is None:
-                        # Last resort - default font doesn't support sizing
+                        # last resort; default font doesn't support sizing
                         font = ImageFont.load_default()
                 
-                # Get text color
                 color = self._hex_to_rgb(zone.font_color)
                 
-                # Calculate text position based on alignment
                 bbox = draw.textbbox((0, 0), text, font=font)
                 text_width = bbox[2] - bbox[0]
                 
@@ -266,10 +213,8 @@ class CertificateGenerator:
                 elif zone.alignment == "right":
                     x = x - text_width
                 
-                # Draw text
                 draw.text((x, y), text, font=font, fill=color)
             
-            # Add QR code if configured
             if qr_zone and verification_url_base:
                 verification_url = f"{verification_url_base}?code={verification_code}"
                 
@@ -285,7 +230,6 @@ class CertificateGenerator:
                 qr_img = self._create_qr_code(verification_url, qr_size)
                 template.paste(qr_img, (qr_x, qr_y))
             
-            # Save
             output_filename = f"{verification_code}.png"
             output_path = self.output_dir / output_filename
             template.save(output_path, "PNG", quality=95)
@@ -310,36 +254,27 @@ class CertificateGenerator:
         qr_zone: Optional[QRZone] = None,
         verification_url_base: str = "",
     ) -> CertificateResult:
-        """
-        Generate certificate as PDF.
-        
-        Uses ReportLab to create a PDF with the template as background.
-        """
+        """uses reportlab to render the template as the pdf background."""
         try:
-            # Load template to get dimensions
             template_img = Image.open(template_path)
             img_width, img_height = template_img.size
             
-            # Generate verification code
             verification_code = self.generate_verification_code(
                 data.participant_id,
                 "participation" if not data.rank or data.rank > 15 else "winner",
                 data.issued_at,
             )
             
-            # Output path
             output_filename = f"{verification_code}.pdf"
             output_path = self.output_dir / output_filename
             
-            # Create PDF with same dimensions as template
-            # Convert pixels to points (72 points = 1 inch, assume 96 DPI)
+            # pixels to points (72pt = 1in at 96 dpi)
             scale = 72 / 96
             page_width = img_width * scale
             page_height = img_height * scale
             
             c = canvas.Canvas(str(output_path), pagesize=(page_width, page_height))
             
-            # Draw template as background
             c.drawImage(
                 template_path,
                 0, 0,
@@ -347,9 +282,9 @@ class CertificateGenerator:
                 height=page_height,
             )
             
-            # Prepare field values - support both naming conventions
+            # field values under both naming conventions
             field_values = {
-                # Short names (legacy)
+                # short names (legacy)
                 "name": data.display_name,
                 "team": data.team_name or "",
                 "rank": f"#{data.rank}" if data.rank else "",
@@ -357,32 +292,28 @@ class CertificateGenerator:
                 "event": data.event_name,
                 "date": data.issued_at.strftime("%B %d, %Y"),
                 "verification_code": verification_code,
-                # Full names (frontend uses these)
+                # full names (frontend uses these)
                 "participant_name": data.display_name,
                 "team_name": data.team_name or "",
                 "event_name": data.event_name,
             }
             
-            # Draw text zones
             for zone in text_zones:
                 text = field_values.get(zone.field, "")
                 if not text:
                     continue
                 
-                # Calculate position (PDF has origin at bottom-left)
+                # pdf origin is bottom-left
                 if zone.is_percentage:
                     x = zone.x / 100 * page_width
-                    # Flip Y coordinate for PDF
                     y = page_height - (zone.y / 100 * page_height)
                 else:
                     x = zone.x * scale
                     y = page_height - (zone.y * scale)
                 
-                # Set font
                 font_name = zone.font_family
-                # ReportLab built-in fonts
+                # reportlab built-in fonts
                 if font_name.lower() not in ["helvetica", "times-roman", "courier"]:
-                    # Try to register custom font
                     font_path = self._get_font_path(zone.font_family)
                     if font_path:
                         from reportlab.pdfbase import pdfmetrics
@@ -397,11 +328,9 @@ class CertificateGenerator:
                 
                 c.setFont(font_name, zone.font_size)
                 
-                # Set color
                 rgb = self._hex_to_rgb(zone.font_color)
                 c.setFillColorRGB(rgb[0]/255, rgb[1]/255, rgb[2]/255)
                 
-                # Draw text with alignment
                 if zone.alignment == "center":
                     c.drawCentredString(x, y, text)
                 elif zone.alignment == "right":
@@ -409,7 +338,6 @@ class CertificateGenerator:
                 else:
                     c.drawString(x, y, text)
             
-            # Add QR code if configured
             if qr_zone and verification_url_base:
                 verification_url = f"{verification_url_base}?code={verification_code}"
                 
@@ -424,7 +352,7 @@ class CertificateGenerator:
                 
                 qr_img = self._create_qr_code(verification_url, int(qr_size / scale))
                 
-                # Convert PIL image to bytes for ReportLab
+                # pil image to bytes for reportlab
                 qr_buffer = io.BytesIO()
                 qr_img.save(qr_buffer, format="PNG")
                 qr_buffer.seek(0)
@@ -432,7 +360,7 @@ class CertificateGenerator:
                 c.drawImage(
                     ImageReader(qr_buffer),
                     qr_x,
-                    qr_y - qr_size,  # Adjust for top-left origin
+                    qr_y - qr_size,  # adjust for top-left origin
                     width=qr_size,
                     height=qr_size,
                 )
@@ -460,12 +388,7 @@ class CertificateGenerator:
         output_format: str = "pdf",
         verification_url_base: str = "",
     ) -> CertificateResult:
-        """
-        Generate certificate using template configuration.
-        
-        This is the main entry point that accepts raw configuration.
-        """
-        # Parse text zones
+        """main entry point; builds zones from raw config and dispatches to png or pdf."""
         zones = [
             TextZone(
                 id=z.get("id", str(i)),
@@ -484,7 +407,6 @@ class CertificateGenerator:
             for i, z in enumerate(text_zones)
         ]
         
-        # Parse QR zone
         qr = None
         if qr_zone:
             qr = QRZone(
@@ -494,7 +416,6 @@ class CertificateGenerator:
                 is_percentage=qr_zone.get("is_percentage", True),
             )
         
-        # Generate based on format
         if output_format.lower() == "png":
             return self.generate_png(
                 template_path, data, zones, qr, verification_url_base
@@ -510,11 +431,7 @@ class CertificateGenerator:
         text_zones: List[Dict[str, Any]],
         qr_zone: Optional[Dict[str, Any]] = None,
     ) -> bytes:
-        """
-        Generate a preview of the certificate template with sample data.
-        
-        Returns PNG bytes for display in admin UI.
-        """
+        """render a preview with sample data; returns png bytes for the admin ui."""
         sample_data = CertificateData(
             participant_id=UUID("00000000-0000-0000-0000-000000000000"),
             display_name="John Doe",

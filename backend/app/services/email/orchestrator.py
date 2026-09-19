@@ -1,12 +1,6 @@
-"""
-Email Orchestration Service
-
-The crown jewel of ZeroPool - intelligent multi-provider email routing
-with rate limiting, failover, and circuit breaker patterns.
-"""
+"""multi-provider email routing with rate limiting, failover, and circuit breaker."""
 
 import asyncio
-import json
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -24,14 +18,8 @@ from app.utils.security import decrypt_data
 settings = get_settings()
 
 
-# =============================================================================
-# Data Classes
-# =============================================================================
-
-
 @dataclass
 class EmailMessage:
-    """Email message to send."""
     to: str
     subject: str
     body_html: str
@@ -49,7 +37,6 @@ class EmailMessage:
 
 @dataclass
 class SendResult:
-    """Result of sending an email."""
     success: bool
     provider_id: Optional[UUID] = None
     provider_name: Optional[str] = None
@@ -59,7 +46,6 @@ class SendResult:
 
 
 class ProviderHealth(Enum):
-    """Provider health status."""
     HEALTHY = "healthy"
     DEGRADED = "degraded"
     UNHEALTHY = "unhealthy"
@@ -67,12 +53,10 @@ class ProviderHealth(Enum):
 
 @dataclass
 class ProviderStatus:
-    """Current status of an email provider."""
     provider_id: UUID
     name: str
     health: ProviderHealth
     
-    # Current usage
     daily_used: int
     daily_limit: Optional[int]
     hourly_used: int
@@ -80,23 +64,15 @@ class ProviderStatus:
     minute_used: int
     minute_limit: Optional[int]
     
-    # Circuit breaker
     circuit_open: bool
     circuit_open_until: Optional[datetime]
     failure_count: int
     
-    # Availability
     available: bool
     unavailable_reason: Optional[str]
 
 
-# =============================================================================
-# Provider Interface
-# =============================================================================
-
-
 class EmailProviderInterface(ABC):
-    """Abstract interface for email providers."""
     
     @abstractmethod
     async def send(
@@ -104,35 +80,12 @@ class EmailProviderInterface(ABC):
         message: EmailMessage,
         config: Dict[str, Any],
     ) -> Tuple[bool, Optional[str], Optional[str]]:
-        """
-        Send an email.
-        
-        Args:
-            message: The email to send
-            config: Provider-specific configuration
-            
-        Returns:
-            Tuple of (success, message_id, error_message)
-        """
+        """returns (success, message_id, error_message)."""
         pass
     
     @abstractmethod
     async def health_check(self, config: Dict[str, Any]) -> bool:
-        """
-        Check if provider is healthy.
-        
-        Args:
-            config: Provider-specific configuration
-            
-        Returns:
-            True if provider is healthy
-        """
         pass
-
-
-# =============================================================================
-# Gmail Provider
-# =============================================================================
 
 
 class GmailProvider(EmailProviderInterface):
@@ -143,8 +96,6 @@ class GmailProvider(EmailProviderInterface):
         message: EmailMessage,
         config: Dict[str, Any],
     ) -> Tuple[bool, Optional[str], Optional[str]]:
-        """Send email via Gmail SMTP."""
-        # Transform Gmail config to SMTP config
         smtp_config = {
             "host": "smtp.gmail.com",
             "port": 587,
@@ -154,7 +105,6 @@ class GmailProvider(EmailProviderInterface):
             "start_tls": True,
         }
         
-        # Override from address to use Gmail email
         if not message.from_address:
             message.from_address = config.get("email")
         
@@ -162,7 +112,6 @@ class GmailProvider(EmailProviderInterface):
         return await smtp.send(message, smtp_config)
     
     async def health_check(self, config: Dict[str, Any]) -> bool:
-        """Check Gmail SMTP connectivity."""
         smtp_config = {
             "host": "smtp.gmail.com",
             "port": 587,
@@ -176,25 +125,17 @@ class GmailProvider(EmailProviderInterface):
         return await smtp.health_check(smtp_config)
 
 
-# =============================================================================
-# SMTP Provider
-# =============================================================================
-
-
 class SMTPProvider(EmailProviderInterface):
-    """Generic SMTP provider."""
     
     async def send(
         self,
         message: EmailMessage,
         config: Dict[str, Any],
     ) -> Tuple[bool, Optional[str], Optional[str]]:
-        """Send email via SMTP."""
         from email.mime.multipart import MIMEMultipart
         from email.mime.text import MIMEText
         
         try:
-            # Build email
             msg = MIMEMultipart("alternative")
             msg["Subject"] = message.subject
             msg["From"] = f"{message.from_name or settings.email_from_name} <{message.from_address or settings.email_from_address}>"
@@ -203,17 +144,14 @@ class SMTPProvider(EmailProviderInterface):
             if message.reply_to:
                 msg["Reply-To"] = message.reply_to
             
-            # Add custom headers
             if message.headers:
                 for key, value in message.headers.items():
                     msg[key] = value
             
-            # Attach text parts
             if message.body_text:
                 msg.attach(MIMEText(message.body_text, "plain", "utf-8"))
             msg.attach(MIMEText(message.body_html, "html", "utf-8"))
             
-            # Get SMTP settings
             host = config.get("host", "localhost")
             port = config.get("port", 587)
             username = config.get("username")
@@ -221,11 +159,10 @@ class SMTPProvider(EmailProviderInterface):
             use_tls = config.get("use_tls", True)
             start_tls = config.get("start_tls", True)
             
-            # Decrypt password if encrypted
+            # decrypt password if encrypted
             if password and password.startswith("gAAAAA"):
                 password = decrypt_data(password)
             
-            # Send
             smtp = aiosmtplib.SMTP(
                 hostname=host,
                 port=port,
@@ -241,7 +178,6 @@ class SMTPProvider(EmailProviderInterface):
             result = await smtp.send_message(msg)
             await smtp.quit()
             
-            # Extract message ID from response
             message_id = None
             if result and len(result) > 0:
                 message_id = str(result)
@@ -254,7 +190,6 @@ class SMTPProvider(EmailProviderInterface):
             return False, None, f"Error: {str(e)}"
     
     async def health_check(self, config: Dict[str, Any]) -> bool:
-        """Check SMTP connectivity."""
         try:
             host = config.get("host", "localhost")
             port = config.get("port", 587)
@@ -275,11 +210,6 @@ class SMTPProvider(EmailProviderInterface):
             return False
 
 
-# =============================================================================
-# Brevo (Sendinblue) API Provider
-# =============================================================================
-
-
 class BrevoProvider(EmailProviderInterface):
     """Brevo (formerly Sendinblue) API provider."""
     
@@ -290,7 +220,6 @@ class BrevoProvider(EmailProviderInterface):
         message: EmailMessage,
         config: Dict[str, Any],
     ) -> Tuple[bool, Optional[str], Optional[str]]:
-        """Send email via Brevo API."""
         try:
             api_key = config.get("api_key")
             if api_key and api_key.startswith("gAAAAA"):
@@ -336,7 +265,6 @@ class BrevoProvider(EmailProviderInterface):
             return False, None, f"Error: {str(e)}"
     
     async def health_check(self, config: Dict[str, Any]) -> bool:
-        """Check Brevo API connectivity."""
         try:
             api_key = config.get("api_key")
             if api_key and api_key.startswith("gAAAAA"):
@@ -355,20 +283,13 @@ class BrevoProvider(EmailProviderInterface):
             return False
 
 
-# =============================================================================
-# Mailgun API Provider
-# =============================================================================
-
-
 class MailgunProvider(EmailProviderInterface):
-    """Mailgun API provider."""
     
     async def send(
         self,
         message: EmailMessage,
         config: Dict[str, Any],
     ) -> Tuple[bool, Optional[str], Optional[str]]:
-        """Send email via Mailgun API."""
         try:
             api_key = config.get("api_key")
             domain = config.get("domain")
@@ -418,7 +339,6 @@ class MailgunProvider(EmailProviderInterface):
             return False, None, f"Error: {str(e)}"
     
     async def health_check(self, config: Dict[str, Any]) -> bool:
-        """Check Mailgun API connectivity."""
         try:
             api_key = config.get("api_key")
             domain = config.get("domain")
@@ -445,15 +365,9 @@ class MailgunProvider(EmailProviderInterface):
             return False
 
 
-# =============================================================================
-# AWS SES Provider
-# =============================================================================
-
-
 class AWSSESProvider(EmailProviderInterface):
     """AWS SES provider using SMTP interface."""
     
-    # SES SMTP endpoints by region
     ENDPOINTS = {
         "us-east-1": "email-smtp.us-east-1.amazonaws.com",
         "us-west-2": "email-smtp.us-west-2.amazonaws.com",
@@ -468,8 +382,6 @@ class AWSSESProvider(EmailProviderInterface):
         message: EmailMessage,
         config: Dict[str, Any],
     ) -> Tuple[bool, Optional[str], Optional[str]]:
-        """Send email via AWS SES SMTP."""
-        # Use SMTP provider with SES settings
         smtp_config = {
             "host": self.ENDPOINTS.get(config.get("region", "us-east-1")),
             "port": 587,
@@ -483,7 +395,6 @@ class AWSSESProvider(EmailProviderInterface):
         return await smtp.send(message, smtp_config)
     
     async def health_check(self, config: Dict[str, Any]) -> bool:
-        """Check SES SMTP connectivity."""
         smtp_config = {
             "host": self.ENDPOINTS.get(config.get("region", "us-east-1")),
             "port": 587,
@@ -494,39 +405,24 @@ class AWSSESProvider(EmailProviderInterface):
         return await smtp.health_check(smtp_config)
 
 
-# =============================================================================
-# Provider Registry
-# =============================================================================
-
-
 PROVIDER_REGISTRY: Dict[str, EmailProviderInterface] = {
     "smtp": SMTPProvider(),
-    "gmail": GmailProvider(),  # Gmail with App Password
+    "gmail": GmailProvider(),
     "brevo": BrevoProvider(),
-    "sendinblue": BrevoProvider(),  # Alias
-    "mailjet": BrevoProvider(),  # Uses similar API pattern
+    "sendinblue": BrevoProvider(),  # alias
+    "mailjet": BrevoProvider(),  # uses similar api pattern
     "mailgun": MailgunProvider(),
     "aws_ses": AWSSESProvider(),
-    "ses": AWSSESProvider(),  # Alias
+    "ses": AWSSESProvider(),  # alias
 }
 
 
 def get_provider_instance(provider_type: str) -> Optional[EmailProviderInterface]:
-    """Get provider instance by type."""
     return PROVIDER_REGISTRY.get(provider_type.lower())
 
 
-# =============================================================================
-# Rate Limiter
-# =============================================================================
-
-
 class RateLimiter:
-    """
-    Redis-based rate limiter with multiple time windows.
-    
-    Tracks per-second, per-minute, per-hour, and per-day limits.
-    """
+    """redis-based rate limiter with per-second/minute/hour/day windows."""
     
     def __init__(self, redis: aioredis.Redis):
         self.redis = redis
@@ -539,12 +435,7 @@ class RateLimiter:
         minute_limit: Optional[int] = None,
         second_limit: Optional[int] = None,
     ) -> Tuple[bool, Optional[str]]:
-        """
-        Check if provider is within rate limits.
-        
-        Returns:
-            Tuple of (can_send, blocked_reason)
-        """
+        """returns (can_send, blocked_reason)."""
         windows = [
             ("second", second_limit, 1),
             ("minute", minute_limit, 60),
@@ -566,11 +457,7 @@ class RateLimiter:
         return True, None
     
     async def increment(self, provider_id: str) -> None:
-        """
-        Increment rate limit counters for all windows.
-        
-        Uses Redis pipeline for atomic operations.
-        """
+        """increment counters for all windows; uses redis pipeline for atomicity."""
         windows = [
             ("second", 1),
             ("minute", 60),
@@ -588,7 +475,6 @@ class RateLimiter:
         await pipe.execute()
     
     async def get_usage(self, provider_id: str) -> Dict[str, int]:
-        """Get current usage for all windows."""
         windows = ["second", "minute", "hourly", "daily"]
         usage = {}
         
@@ -600,17 +486,8 @@ class RateLimiter:
         return usage
 
 
-# =============================================================================
-# Circuit Breaker
-# =============================================================================
-
-
 class CircuitBreaker:
-    """
-    Circuit breaker pattern for provider health.
-    
-    Opens circuit after N failures, allowing recovery time.
-    """
+    """circuit breaker; opens after n failures, allowing recovery time."""
     
     def __init__(
         self,
@@ -623,7 +500,6 @@ class CircuitBreaker:
         self.recovery_timeout = recovery_timeout
     
     async def is_open(self, provider_id: str) -> bool:
-        """Check if circuit is open (provider disabled)."""
         key = f"circuit:{provider_id}:open_until"
         open_until = await self.redis.get(key)
         
@@ -632,29 +508,21 @@ class CircuitBreaker:
             if datetime.utcnow().timestamp() < open_until_ts:
                 return True
             else:
-                # Circuit timeout expired, reset
                 await self.reset(provider_id)
         
         return False
     
     async def record_success(self, provider_id: str) -> None:
-        """Record successful send, reset failure count."""
         key = f"circuit:{provider_id}:failures"
         await self.redis.delete(key)
     
     async def record_failure(self, provider_id: str) -> bool:
-        """
-        Record failed send.
-        
-        Returns:
-            True if circuit was opened
-        """
+        """returns true if circuit was opened."""
         key = f"circuit:{provider_id}:failures"
         failures = await self.redis.incr(key)
         await self.redis.expire(key, 600)  # Reset after 10 minutes of no failures
         
         if failures >= self.failure_threshold:
-            # Open circuit
             open_until = datetime.utcnow() + timedelta(seconds=self.recovery_timeout)
             await self.redis.set(
                 f"circuit:{provider_id}:open_until",
@@ -666,33 +534,17 @@ class CircuitBreaker:
         return False
     
     async def reset(self, provider_id: str) -> None:
-        """Reset circuit breaker state."""
         await self.redis.delete(f"circuit:{provider_id}:failures")
         await self.redis.delete(f"circuit:{provider_id}:open_until")
     
     async def get_failure_count(self, provider_id: str) -> int:
-        """Get current failure count."""
         key = f"circuit:{provider_id}:failures"
         count = await self.redis.get(key)
         return int(count) if count else 0
 
 
-# =============================================================================
-# Email Orchestrator
-# =============================================================================
-
-
 class EmailOrchestrator:
-    """
-    Main orchestrator for sending emails.
-    
-    Handles:
-    - Provider selection based on priority and availability
-    - Rate limit checking and enforcement
-    - Circuit breaker pattern for unhealthy providers
-    - Automatic failover to backup providers
-    - Logging and metrics
-    """
+    """sends emails with priority-based provider selection, rate limiting, circuit breaking, and failover."""
     
     def __init__(self, redis: aioredis.Redis):
         self.redis = redis
@@ -706,31 +558,16 @@ class EmailOrchestrator:
         max_attempts: int = 5,
         retry_delay: float = 1.0,
     ) -> SendResult:
-        """
-        Send an email using available providers.
-        
-        Tries providers in priority order, failing over on errors.
-        
-        Args:
-            message: The email to send
-            providers: List of provider configs from database
-            max_attempts: Maximum number of total attempts
-            retry_delay: Delay between attempts in seconds
-            
-        Returns:
-            SendResult with success status and details
-        """
+        """tries providers in priority order, failing over on errors."""
         attempts = 0
         last_error = None
         
         for attempt in range(max_attempts):
             attempts = attempt + 1
             
-            # Find available provider
             provider_config = await self._find_available_provider(providers)
             
             if not provider_config:
-                # All providers exhausted, wait and retry
                 if attempt < max_attempts - 1:
                     await asyncio.sleep(retry_delay * (attempt + 1))
                     continue
@@ -746,20 +583,17 @@ class EmailOrchestrator:
             provider_type = provider_config["type"]
             config = provider_config["config"]
             
-            # Get provider instance
             provider = get_provider_instance(provider_type)
             if not provider:
                 last_error = f"Unknown provider type: {provider_type}"
                 continue
             
-            # Try to send
             try:
                 print(f"[EMAIL] Attempting to send via {provider_name} ({provider_type})")
                 success, message_id, error = await provider.send(message, config)
                 print(f"[EMAIL] Result: success={success}, error={error}")
                 
                 if success:
-                    # Record success
                     await self.rate_limiter.increment(str(provider_id))
                     await self.circuit_breaker.record_success(str(provider_id))
                     
@@ -771,12 +605,10 @@ class EmailOrchestrator:
                         attempts=attempts,
                     )
                 else:
-                    # Record failure
                     last_error = error
                     circuit_opened = await self.circuit_breaker.record_failure(str(provider_id))
                     
                     if circuit_opened:
-                        # Remove this provider from consideration
                         providers = [p for p in providers if p["id"] != provider_id]
                     
             except Exception as e:
@@ -793,26 +625,15 @@ class EmailOrchestrator:
         self,
         providers: List[Dict[str, Any]],
     ) -> Optional[Dict[str, Any]]:
-        """
-        Find the first available provider.
-        
-        Checks:
-        1. Circuit breaker status
-        2. Rate limits
-        
-        Returns provider config or None if all exhausted.
-        """
-        # Sort by priority
+        """first provider passing circuit-breaker and rate-limit checks, or none."""
         sorted_providers = sorted(providers, key=lambda p: p.get("priority", 10))
         
         for provider in sorted_providers:
             provider_id = str(provider["id"])
             
-            # Check circuit breaker
             if await self.circuit_breaker.is_open(provider_id):
                 continue
             
-            # Check rate limits
             can_send, _ = await self.rate_limiter.check_limits(
                 provider_id,
                 daily_limit=provider.get("daily_limit"),
@@ -830,27 +651,22 @@ class EmailOrchestrator:
         self,
         providers: List[Dict[str, Any]],
     ) -> List[ProviderStatus]:
-        """Get current status of all providers."""
         statuses = []
         
         for provider in providers:
             provider_id = str(provider["id"])
             
-            # Get usage
             usage = await self.rate_limiter.get_usage(provider_id)
             
-            # Check circuit
             circuit_open = await self.circuit_breaker.is_open(provider_id)
             failure_count = await self.circuit_breaker.get_failure_count(provider_id)
             
-            # Get circuit open until time
             open_until_key = f"circuit:{provider_id}:open_until"
             open_until_ts = await self.redis.get(open_until_key)
             circuit_open_until = None
             if open_until_ts:
                 circuit_open_until = datetime.fromtimestamp(float(open_until_ts))
             
-            # Determine health
             if circuit_open:
                 health = ProviderHealth.UNHEALTHY
             elif failure_count > 0:
@@ -858,7 +674,6 @@ class EmailOrchestrator:
             else:
                 health = ProviderHealth.HEALTHY
             
-            # Check availability
             available = True
             unavailable_reason = None
             
@@ -866,7 +681,6 @@ class EmailOrchestrator:
                 available = False
                 unavailable_reason = "Circuit breaker open"
             else:
-                # Check rate limits
                 can_send, reason = await self.rate_limiter.check_limits(
                     provider_id,
                     daily_limit=provider.get("daily_limit"),

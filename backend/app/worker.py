@@ -1,12 +1,4 @@
-"""
-ARQ Background Worker
-
-Handles:
-- Email campaign processing
-- CTFd synchronization
-- Certificate generation
-- Cleanup tasks
-"""
+"""arq background worker: email, ctfd sync, certificate generation, cleanup."""
 
 import asyncio
 import logging
@@ -16,7 +8,7 @@ from uuid import UUID
 
 from arq import create_pool, cron
 from arq.connections import RedisSettings
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -42,19 +34,16 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 
 
-# Create async engine and session factory for worker
 engine = create_async_engine(settings.database_url, echo=settings.debug)
 async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
 async def get_db() -> AsyncSession:
-    """Get a database session."""
     async with async_session() as session:
         yield session
 
 
 async def get_providers_config(db: AsyncSession) -> list:
-    """Get active email provider configurations."""
     result = await db.execute(
         select(EmailProvider)
         .where(EmailProvider.is_active == True)
@@ -64,7 +53,6 @@ async def get_providers_config(db: AsyncSession) -> list:
     
     configs = []
     for p in providers:
-        # Decrypt sensitive config fields
         config = dict(p.config)
         sensitive_fields = ["password", "api_key", "smtp_password"]
         for field in sensitive_fields:
@@ -72,7 +60,7 @@ async def get_providers_config(db: AsyncSession) -> list:
                 try:
                     config[field] = decrypt_data(config[field])
                 except Exception:
-                    pass  # Not encrypted or decryption failed
+                    pass  # not encrypted or decryption failed
         
         configs.append({
             "id": p.id,
@@ -89,11 +77,6 @@ async def get_providers_config(db: AsyncSession) -> list:
     return configs
 
 
-# =============================================================================
-# Email Tasks
-# =============================================================================
-
-
 async def send_email_task(
     ctx: Dict[str, Any],
     to: str,
@@ -104,7 +87,6 @@ async def send_email_task(
     campaign_id: str = None,
     template_id: str = None,
 ):
-    """Send a single email."""
     redis = ctx["redis"]
     
     async with async_session() as db:
@@ -125,7 +107,6 @@ async def send_email_task(
         
         result = await orchestrator.send(message, providers)
         
-        # Log the email
         email_log = EmailLog(
             participant_id=UUID(participant_id) if participant_id else None,
             campaign_id=UUID(campaign_id) if campaign_id else None,
@@ -150,12 +131,10 @@ async def send_email_task(
 
 
 async def process_campaign_task(ctx: Dict[str, Any], campaign_id: str):
-    """Process an email campaign - send emails to all recipients."""
     redis = ctx["redis"]
     campaign_uuid = UUID(campaign_id)
     
     async with async_session() as db:
-        # Get campaign
         result = await db.execute(
             select(EmailCampaign).where(EmailCampaign.id == campaign_uuid)
         )
@@ -169,12 +148,10 @@ async def process_campaign_task(ctx: Dict[str, Any], campaign_id: str):
             logger.info(f"Campaign {campaign_id} status is {campaign.status}, skipping")
             return
 
-        # Update status to sending
         campaign.status = CampaignStatus.SENDING
         campaign.started_at = campaign.started_at or datetime.utcnow()
         await db.commit()
 
-        # Get providers
         providers = await get_providers_config(db)
         if not providers:
             campaign.status = CampaignStatus.CANCELLED
@@ -182,7 +159,6 @@ async def process_campaign_task(ctx: Dict[str, Any], campaign_id: str):
             logger.error("No active email providers")
             return
 
-        # Build recipient query
         query = select(Participant)
 
         if campaign.event_id:
@@ -198,9 +174,7 @@ async def process_campaign_task(ctx: Dict[str, Any], campaign_id: str):
         result = await db.execute(query)
         participants = result.scalars().all()
 
-        # Resume dedup: exclude participants who already have a SENT EmailLog
-        # for this campaign, so a resumed run continues from where it stopped
-        # instead of re-emailing everyone.
+        # resume dedup: skip participants already SENT so a resumed run doesn't re-email
         sent_result = await db.execute(
             select(EmailLog.participant_id).where(
                 EmailLog.campaign_id == campaign.id,
@@ -217,28 +191,25 @@ async def process_campaign_task(ctx: Dict[str, Any], campaign_id: str):
         failed = 0
 
         for participant in participants:
-            # Re-read campaign state to honor cancel/pause requests mid-send
+            # re-read campaign state to honor cancel/pause mid-send
             await db.refresh(campaign)
             if campaign.status == CampaignStatus.CANCELLED:
                 logger.info(f"Campaign {campaign_id} was cancelled")
                 break
             if campaign.status == CampaignStatus.PAUSED:
-                # Persist progress and stop without marking SENT; leave the
-                # campaign PAUSED so a later resume can continue sending.
+                # persist progress and stop, leaving PAUSED so a later resume continues
                 campaign.sent_count = sent
                 campaign.failed_count = failed
                 await db.commit()
                 logger.info(f"Campaign {campaign_id} paused: {sent} sent, {failed} failed")
                 return
 
-            # Prepare context
             context = {
                 "name": participant.name or participant.username,
                 "email": participant.email,
                 "username": participant.username,
             }
 
-            # Render email
             subject = render_subject(campaign.subject, context)
             body_html, body_text = render_email(
                 campaign.body_html, context, campaign.body_text
@@ -251,10 +222,8 @@ async def process_campaign_task(ctx: Dict[str, Any], campaign_id: str):
                 body_text=body_text,
             )
 
-            # Send
             send_result = await orchestrator.send(message, providers)
 
-            # Log
             email_log = EmailLog(
                 participant_id=participant.id,
                 campaign_id=campaign.id,
@@ -275,18 +244,15 @@ async def process_campaign_task(ctx: Dict[str, Any], campaign_id: str):
             else:
                 failed += 1
 
-            # Update campaign progress
             campaign.sent_count = sent
             campaign.failed_count = failed
 
-            # Commit periodically
             if (sent + failed) % 10 == 0:
                 await db.commit()
 
-            # Small delay to avoid overwhelming providers
+            # pace to avoid overwhelming providers
             await asyncio.sleep(0.1)
 
-        # Final update
         if campaign.status == CampaignStatus.SENDING:
             campaign.status = CampaignStatus.SENT
         campaign.completed_at = datetime.utcnow()
@@ -300,11 +266,9 @@ async def send_verification_email_task(
     participant_id: str,
     verification_url: str,
 ):
-    """Send email verification to a participant."""
     redis = ctx["redis"]
     
     async with async_session() as db:
-        # Get participant
         result = await db.execute(
             select(Participant).where(Participant.id == UUID(participant_id))
         )
@@ -314,13 +278,11 @@ async def send_verification_email_task(
             logger.error(f"Participant {participant_id} not found")
             return
         
-        # Get event
         result = await db.execute(
             select(Event).where(Event.id == participant.event_id)
         )
         event = result.scalar_one_or_none()
         
-        # Try to find template
         result = await db.execute(
             select(EmailTemplate).where(
                 EmailTemplate.event_id == participant.event_id,
@@ -330,7 +292,6 @@ async def send_verification_email_task(
         )
         template = result.scalar_one_or_none()
         
-        # Fall back to global template
         if not template:
             result = await db.execute(
                 select(EmailTemplate).where(
@@ -355,7 +316,6 @@ async def send_verification_email_task(
                 template.body_html, context, template.body_text
             )
         else:
-            # Use default template
             from app.services.email.templates import DEFAULT_TEMPLATES
             default = DEFAULT_TEMPLATES["verification"]
             subject = render_subject(default["subject"], context)
@@ -380,7 +340,6 @@ async def send_verification_email_task(
         
         result = await orchestrator.send(message, providers)
         
-        # Log
         email_log = EmailLog(
             participant_id=participant.id,
             provider_id=result.provider_id,
@@ -407,15 +366,7 @@ async def resend_verifications_task(
     event_id: str,
     participant_ids=None,
 ):
-    """
-    Resend verification emails to unverified participants of an event.
-
-    Mirrors the cli.py `resend-verifications` logic: reuse each participant's
-    existing verification token (or generate a fresh one), refresh
-    email_verification_sent_at, send via the shared _send_verification_email
-    helper (which writes the EmailLog), and pace sends to respect provider
-    limits. If participant_ids is provided, only that subset is targeted.
-    """
+    """resend verification emails to unverified participants; mirrors cli.py resend-verifications (reuse/refresh token, pace sends)."""
     from app.api.auth import _send_verification_email
     from app.utils.security import generate_verification_token
 
@@ -423,7 +374,6 @@ async def resend_verifications_task(
     event_uuid = UUID(event_id)
 
     async with async_session() as db:
-        # Get event
         result = await db.execute(select(Event).where(Event.id == event_uuid))
         event = result.scalar_one_or_none()
 
@@ -431,7 +381,6 @@ async def resend_verifications_task(
             logger.error(f"Event {event_id} not found")
             return
 
-        # Find unverified participants (optionally filtered to a subset)
         query = (
             select(Participant)
             .where(
@@ -456,15 +405,14 @@ async def resend_verifications_task(
         skipped = 0
         failed = 0
         for participant in participants:
-            # Skip anyone already verified (defensive)
+            # defensive: skip already-verified
             if participant.email_verified:
                 skipped += 1
                 continue
 
-            # Reuse existing token or generate a fresh one
             token = participant.email_verification_token or generate_verification_token()
             participant.email_verification_token = token
-            # Always refresh sent-at so the token is treated as fresh
+            # refresh sent-at so the token is treated as fresh
             participant.email_verification_sent_at = datetime.now(timezone.utc)
             verification_url = f"{settings.app_url}/verify?token={token}"
 
@@ -477,7 +425,7 @@ async def resend_verifications_task(
                 failed += 1
                 logger.error(f"Failed to resend verification to {participant.email}: {e}")
 
-            # Pace sends to respect provider limits
+            # pace sends to respect provider limits
             await asyncio.sleep(0.5)
 
         logger.info(
@@ -487,19 +435,12 @@ async def resend_verifications_task(
         return {"sent": sent, "skipped": skipped, "failed": failed, "total": total}
 
 
-# =============================================================================
-# Certificate Tasks
-# =============================================================================
-
-
 async def generate_certificate_task(
     ctx: Dict[str, Any],
     certificate_id: str,
     output_format: str = "png",
 ):
-    """Generate a certificate for a participant."""
     async with async_session() as db:
-        # Get certificate
         result = await db.execute(
             select(Certificate).where(Certificate.id == UUID(certificate_id))
         )
@@ -509,7 +450,6 @@ async def generate_certificate_task(
             logger.error(f"Certificate {certificate_id} not found")
             return
         
-        # Get template
         result = await db.execute(
             select(CertificateTemplate).where(CertificateTemplate.id == cert.template_id)
         )
@@ -519,7 +459,6 @@ async def generate_certificate_task(
             logger.error(f"Template not found for certificate {certificate_id}")
             return
         
-        # Get participant
         result = await db.execute(
             select(Participant).where(Participant.id == cert.participant_id)
         )
@@ -529,13 +468,11 @@ async def generate_certificate_task(
             logger.error(f"Participant not found for certificate {certificate_id}")
             return
         
-        # Get event
         result = await db.execute(
             select(Event).where(Event.id == participant.event_id)
         )
         event = result.scalar_one_or_none()
         
-        # Build text zones from template
         text_zones = []
         if template.text_zones:
             for zone_config in template.text_zones:
@@ -553,7 +490,6 @@ async def generate_certificate_task(
                     is_percentage=zone_config.get("is_percentage", True),
                 ))
 
-        # Build QR zone
         qr_zone = None
         if template.qr_zone:
             qr_zone = QRZone(
@@ -563,13 +499,11 @@ async def generate_certificate_task(
                 is_percentage=template.qr_zone.get("is_percentage", True),
             )
 
-        # Resolve template file path
         import os
         template_path = template.template_file
         if template_path and not template_path.startswith("/"):
             template_path = os.path.join(settings.upload_dir, template_path)
 
-        # Build certificate data
         cert_data = CertificateData(
             participant_id=cert.participant_id,
             display_name=cert.display_name or participant.name or participant.username or "Participant",
@@ -579,7 +513,6 @@ async def generate_certificate_task(
             event_name=event.name if event else "Event",
         )
 
-        # Generate certificate
         generator = CertificateGenerator()
 
         verify_url = f"{settings.app_url}/verify"
@@ -607,7 +540,6 @@ async def generate_certificate_task(
             )
             return
 
-        # Update certificate record
         cert.generated_at = datetime.utcnow()
         cert.file_path = gen_result.file_path
         await db.commit()
@@ -620,9 +552,7 @@ async def bulk_generate_certificates_task(
     event_id: str,
     output_format: str = "png",
 ):
-    """Generate certificates for all eligible participants in an event."""
     async with async_session() as db:
-        # Get certificates that need generation
         result = await db.execute(
             select(Certificate)
             .join(Participant, Certificate.participant_id == Participant.id)
@@ -639,13 +569,7 @@ async def bulk_generate_certificates_task(
         logger.info(f"Generated {len(certificates)} certificates for event {event_id}")
 
 
-# =============================================================================
-# CTFd Sync Tasks
-# =============================================================================
-
-
 async def sync_ctfd_results_task(ctx: Dict[str, Any], event_id: str):
-    """Sync results from CTFd."""
     from app.services.ctfd import CTFdClient, CTFdSyncService
     
     async with async_session() as db:
@@ -671,13 +595,7 @@ async def sync_ctfd_results_task(ctx: Dict[str, Any], event_id: str):
             logger.error(f"CTFd sync failed for event {event_id}: {e}")
 
 
-# =============================================================================
-# Cleanup Tasks
-# =============================================================================
-
-
 async def cleanup_expired_sessions_task(ctx: Dict[str, Any]):
-    """Remove expired sessions."""
     async with async_session() as db:
         result = await db.execute(
             select(UserSession).where(UserSession.expires_at < datetime.utcnow())
@@ -694,7 +612,6 @@ async def cleanup_expired_sessions_task(ctx: Dict[str, Any]):
 
 
 async def cleanup_old_email_logs_task(ctx: Dict[str, Any]):
-    """Remove email logs older than 90 days."""
     cutoff = datetime.utcnow() - timedelta(days=90)
     
     async with async_session() as db:
@@ -712,13 +629,7 @@ async def cleanup_old_email_logs_task(ctx: Dict[str, Any]):
             logger.info(f"Cleaned up {len(logs)} old email logs")
 
 
-# =============================================================================
-# Scheduled Tasks (Cron)
-# =============================================================================
-
-
 async def process_pending_campaigns(ctx: Dict[str, Any]):
-    """Check for scheduled campaigns and process them."""
     async with async_session() as db:
         result = await db.execute(
             select(EmailCampaign).where(
@@ -734,7 +645,6 @@ async def process_pending_campaigns(ctx: Dict[str, Any]):
 
 
 async def auto_sync_ctfd(ctx: Dict[str, Any]):
-    """Auto-sync CTFd results for active events."""
     async with async_session() as db:
         result = await db.execute(
             select(Event).where(
@@ -746,17 +656,12 @@ async def auto_sync_ctfd(ctx: Dict[str, Any]):
         events = result.scalars().all()
         
         for event in events:
-            # Only sync if last sync was > 5 minutes ago
+            # skip if synced within the last 5 minutes
             if event.ctfd_synced_at:
                 if datetime.utcnow() - event.ctfd_synced_at < timedelta(minutes=5):
                     continue
             
             await sync_ctfd_results_task(ctx, str(event.id))
-
-
-# =============================================================================
-# Bulk Import Task
-# =============================================================================
 
 
 async def bulk_import_participants_task(
@@ -767,10 +672,7 @@ async def bulk_import_participants_task(
     update_existing: bool = True,
     job_id: str = None,
 ):
-    """
-    Background task to import large numbers of participants.
-    Optimized for bulk operations - fetches all existing data upfront.
-    """
+    """import participants in bulk; fetches all existing data upfront for O(1) lookups."""
     import json
     import secrets
     from app.utils.security import hash_password
@@ -805,14 +707,13 @@ async def bulk_import_participants_task(
         async with async_session() as db:
             event_uuid = UUID(event_id)
             
-            # OPTIMIZATION: Fetch ALL existing participants for this event upfront
             logger.info(f"Fetching existing participants for event {event_id}...")
             result = await db.execute(
                 select(Participant).where(Participant.event_id == event_uuid)
             )
             existing_participants = result.scalars().all()
             
-            # Build lookup dictionaries - O(1) lookup instead of O(n) database queries
+            # in-memory lookups for O(1) instead of O(n) db queries
             existing_by_email = {p.email.lower(): p for p in existing_participants}
             existing_usernames = {p.username.lower() for p in existing_participants}
             
@@ -820,7 +721,6 @@ async def bulk_import_participants_task(
             
             await update_progress(0, 0, 0, [], total, "processing")
             
-            # Batch for new participants
             new_participants = []
             
             for i, p_data in enumerate(participants_data):
@@ -831,7 +731,6 @@ async def bulk_import_participants_task(
                     continue
                 
                 try:
-                    # Check if exists using in-memory lookup (O(1) instead of database query)
                     existing = existing_by_email.get(email)
                     
                     if existing:
@@ -867,12 +766,10 @@ async def bulk_import_participants_task(
                         else:
                             skipped += 1
                         
-                        # Update progress every 500 records
                         if (imported + updated + skipped) % 500 == 0:
                             await update_progress(imported, updated, skipped, errors_list, total)
                         continue
                     
-                    # Generate unique username using in-memory set
                     base_username = (p_data.get("username") or email.split("@")[0]).lower()
                     username = base_username
                     counter = 1
@@ -880,7 +777,6 @@ async def bulk_import_participants_task(
                         username = f"{base_username}{counter}"
                         counter += 1
                     
-                    # Add to set so next iteration knows it's taken
                     existing_usernames.add(username)
                     
                     password = secrets.token_urlsafe(12) if generate_passwords else "changeme123"
@@ -919,11 +815,10 @@ async def bulk_import_participants_task(
                     )
                     
                     new_participants.append(participant)
-                    # Also add to email lookup so duplicates in same CSV are caught
+                    # catch duplicate emails within the same csv
                     existing_by_email[email] = participant
                     imported += 1
                     
-                    # Batch insert every 500 new participants
                     if len(new_participants) >= 500:
                         db.add_all(new_participants)
                         await db.commit()
@@ -933,11 +828,9 @@ async def bulk_import_participants_task(
                 except Exception as e:
                     errors_list.append({"row": i + 1, "email": email, "error": str(e)})
             
-            # Insert remaining participants
             if new_participants:
                 db.add_all(new_participants)
             
-            # Final commit for all updates and remaining inserts
             await db.commit()
         
         await update_progress(imported, updated, skipped, errors_list, total, "completed")
@@ -960,26 +853,18 @@ async def bulk_import_participants_task(
         raise
 
 
-# =============================================================================
-# Worker Configuration
-# =============================================================================
-
-
 async def startup(ctx: Dict[str, Any]):
-    """Worker startup."""
     logger.info("ARQ Worker starting up")
     ctx["redis"] = await create_pool(parse_redis_url(settings.redis_url))
 
 
 async def shutdown(ctx: Dict[str, Any]):
-    """Worker shutdown."""
     logger.info("ARQ Worker shutting down")
     if "redis" in ctx:
         await ctx["redis"].close()
 
 
 def parse_redis_url(url: str) -> RedisSettings:
-    """Parse Redis URL into RedisSettings."""
     from urllib.parse import urlparse
     parsed = urlparse(url)
     return RedisSettings(
@@ -991,8 +876,6 @@ def parse_redis_url(url: str) -> RedisSettings:
 
 
 class WorkerSettings:
-    """ARQ worker settings."""
-    
     redis_settings = parse_redis_url(settings.redis_url)
     
     functions = [
@@ -1009,28 +892,22 @@ class WorkerSettings:
     ]
     
     cron_jobs = [
-        # Process pending campaigns every minute
         cron(process_pending_campaigns, minute={0, 15, 30, 45}),
-        # Auto-sync CTFd every 10 minutes
         cron(auto_sync_ctfd, minute={0, 10, 20, 30, 40, 50}),
-        # Cleanup expired sessions daily at 3am
         cron(cleanup_expired_sessions_task, hour=3, minute=0),
-        # Cleanup old email logs weekly on Sunday at 4am
         cron(cleanup_old_email_logs_task, weekday=6, hour=4, minute=0),
     ]
     
     on_startup = startup
     on_shutdown = shutdown
     
-    # Allow jobs to run for up to 1 hour
+    # jobs may run up to 1 hour
     job_timeout = 3600
-    
-    # Keep results for 1 day
+
+    # keep results for 1 day
     keep_result = 86400
-    
-    # Retry failed jobs
+
     max_tries = 3
-    
-    # Health check key
+
     health_check_key = "arq:health"
     health_check_interval = 60

@@ -1,8 +1,4 @@
-"""
-Events API Routes
-
-Public event information endpoints.
-"""
+"""events api routes."""
 
 from datetime import datetime, timezone
 from typing import Optional
@@ -36,11 +32,7 @@ async def list_events(
     per_page: int = 20,
     db: AsyncSession = Depends(get_session),
 ):
-    """
-    List public events.
-    
-    Only shows events with status 'registration' or 'live'.
-    """
+    """list public events (status 'registration' or 'live' only)."""
     query = select(Event).where(
         Event.status.in_([EventStatus.REGISTRATION, EventStatus.LIVE])
     )
@@ -52,19 +44,16 @@ async def list_events(
         except ValueError:
             pass
     
-    # Count total
     count_query = select(func.count()).select_from(query.subquery())
     total_result = await db.execute(count_query)
     total = total_result.scalar() or 0
     
-    # Paginate
     query = query.order_by(Event.created_at.desc())
     query = query.offset((page - 1) * per_page).limit(per_page)
     
     result = await db.execute(query)
     events = result.scalars().all()
     
-    # Get participant counts
     event_responses = []
     for event in events:
         participant_count_result = await db.execute(
@@ -119,7 +108,6 @@ async def get_event(
     slug: str,
     db: AsyncSession = Depends(get_session),
 ):
-    """Get event by slug."""
     result = await db.execute(
         select(Event).where(Event.slug == slug.lower())
     )
@@ -131,7 +119,6 @@ async def get_event(
             detail="Event not found",
         )
     
-    # Get participant counts
     participant_count_result = await db.execute(
         select(func.count()).where(Participant.event_id == event.id)
     )
@@ -166,28 +153,24 @@ async def get_event(
     )
 
 
-# Registration request schema
 class ParticipantRegistrationRequest(BaseModel):
-    """Participant registration request."""
     name: str
     email: EmailStr
     team_name: Optional[str] = None
     team_password: Optional[str] = None
     turnstile_token: Optional[str] = None
-    # Optional profile fields from the public form -> stored in participant.extra_data
-    # (no schema change; JSONB catch-all). Values are stripped + length-capped on save.
+    # optional profile fields -> participant.extra_data (jsonb); stripped + length-capped on save
     country: Optional[str] = None
     discord: Optional[str] = None
     organization: Optional[str] = None
     participant_type: Optional[str] = None  # "student" | "professional"
     referral_code: Optional[str] = None
     heard_from: Optional[str] = None
-    # Discord OAuth verification: signed token issued by /api/auth/discord/callback
+    # discord oauth verification: signed token issued by /api/auth/discord/callback
     discord_verify_token: Optional[str] = None
 
 
 class RegistrationResponse(BaseModel):
-    """Registration response."""
     success: bool
     message: str
     participant_id: Optional[UUID] = None
@@ -205,15 +188,10 @@ async def register_for_event(
     db: AsyncSession = Depends(get_session),
     redis=Depends(get_redis),
 ):
-    """
-    Register a participant for an event.
-
-    This is the public registration endpoint.
-    """
-    # Verify captcha (no-op unless Turnstile is configured)
+    """register a participant for an event (public endpoint)."""
+    # verify captcha (no-op unless turnstile is configured)
     await verify_turnstile(data.turnstile_token, get_client_ip(request))
 
-    # Get event
     result = await db.execute(
         select(Event).where(Event.id == event_id)
     )
@@ -225,7 +203,6 @@ async def register_for_event(
             detail="Event not found",
         )
     
-    # Check if import-only mode
     settings = event.settings or {}
     if settings.get("is_import_only", False):
         raise HTTPException(
@@ -233,14 +210,12 @@ async def register_for_event(
             detail="This event does not accept public registration",
         )
     
-    # Check event status
     if event.status not in [EventStatus.REGISTRATION, EventStatus.LIVE]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Registration is not open for this event",
         )
     
-    # Check registration window
     now = datetime.now(timezone.utc)
     if event.registration_start and event.registration_start > now:
         raise HTTPException(
@@ -253,7 +228,6 @@ async def register_for_event(
             detail="Registration has ended",
         )
     
-    # Check max participants
     if settings.get("max_participants"):
         count_result = await db.execute(
             select(func.count()).where(Participant.event_id == event_id)
@@ -265,7 +239,7 @@ async def register_for_event(
                 detail="Event has reached maximum capacity",
             )
     
-    # Discord identity verification (compulsory when discord_required is on)
+    # discord identity verification (compulsory when discord_required is on)
     discord_identity = None
     if data.discord_verify_token:
         discord_identity = discord_oauth.read_verify_token(data.discord_verify_token)
@@ -280,7 +254,7 @@ async def register_for_event(
             detail="Discord verification is required to register.",
         )
 
-    # Required profile fields (enforced when discord_required is on)
+    # required profile fields (enforced when discord_required is on)
     if get_settings().discord_required:
         missing = [
             label
@@ -297,7 +271,7 @@ async def register_for_event(
                 detail=f"Missing required fields: {', '.join(missing)}",
             )
 
-    # One Discord account may register only once per event
+    # one discord account may register only once per event
     if discord_identity:
         dup = await db.execute(
             select(Participant).where(
@@ -311,7 +285,7 @@ async def register_for_event(
                 detail="This Discord account is already registered for this event.",
             )
 
-    # Block organizer/admin emails from registering as participants
+    # block organizer/admin emails from registering as participants
     admin_check = await db.execute(
         select(User).where(User.email == data.email.lower())
     )
@@ -321,7 +295,6 @@ async def register_for_event(
             detail="Organizer accounts cannot register as participants",
         )
 
-    # Check if email already registered
     existing = await db.execute(
         select(Participant).where(
             Participant.event_id == event_id,
@@ -334,7 +307,7 @@ async def register_for_event(
             detail="This email is already registered for this event",
         )
     
-    # Generate username from email
+    # generate a unique username from the email
     username = data.email.split("@")[0].lower()
     base_username = username
     counter = 1
@@ -350,14 +323,11 @@ async def register_for_event(
         username = f"{base_username}{counter}"
         counter += 1
     
-    # Generate password
     password = secrets.token_urlsafe(10)
     
-    # Get client IP
     client_ip = request.client.host if request.client else None
     
-    # Collect optional profile fields into extra_data (only what was provided;
-    # stripped + length-capped since this is a public, cross-origin form)
+    # collect optional profile fields into extra_data (only what was provided; stripped + length-capped)
     extra: dict = {}
     if data.team_name:
         extra["team_name"] = data.team_name
@@ -378,7 +348,6 @@ async def register_for_event(
         extra["discord_global_name"] = (discord_identity.get("g") or "")[:64]
         extra["discord_verified"] = True
 
-    # Create participant
     participant = Participant(
         event_id=event_id,
         email=data.email.lower(),
@@ -394,14 +363,12 @@ async def register_for_event(
     db.add(participant)
     await db.flush()
     
-    # Generate verification token
     verification_token = secrets.token_urlsafe(32)
     participant.email_verification_token = verification_token
     participant.email_verification_sent_at = datetime.now(timezone.utc)
     
     await db.commit()
     
-    # Send verification email
     await _send_registration_verification_email(
         db, redis, participant, event, verification_token
     )
@@ -420,8 +387,6 @@ async def _send_registration_verification_email(
     event: Event,
     verification_token: str,
 ):
-    """Send verification email to newly registered participant."""
-    # Get active providers
     result = await db.execute(
         select(EmailProvider).where(
             EmailProvider.is_active == True
@@ -430,11 +395,10 @@ async def _send_registration_verification_email(
     providers = result.scalars().all()
     
     if not providers:
-        # Log warning but don't fail registration
+        # log warning but don't fail registration
         print("Warning: No email providers configured - verification email not sent")
         return
     
-    # Prepare provider configs
     provider_configs = [
         {
             "id": p.id,
@@ -450,7 +414,6 @@ async def _send_registration_verification_email(
         for p in providers
     ]
     
-    # Render email
     from app.services.email.templates import DEFAULT_TEMPLATES
     
     verification_url = f"{settings.app_url}/verify?token={verification_token}"
@@ -470,7 +433,6 @@ async def _send_registration_verification_email(
     )
     subject = render_subject(template["subject"], variables)
     
-    # Create message
     message = EmailMessage(
         to=participant.email,
         subject=subject,
@@ -480,6 +442,5 @@ async def _send_registration_verification_email(
         template_slug="verification",
     )
     
-    # Send via orchestrator
     orchestrator = EmailOrchestrator(redis)
     await orchestrator.send(message, provider_configs)

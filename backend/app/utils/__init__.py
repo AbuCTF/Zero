@@ -1,6 +1,4 @@
-"""
-Utility modules for ZeroPool.
-"""
+"""utility modules for zeropool."""
 
 from app.utils.security import (
     decrypt_data,

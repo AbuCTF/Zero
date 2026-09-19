@@ -1,17 +1,4 @@
-"""
-Admin API Routes
-
-Comprehensive admin endpoints for managing:
-- Events
-- Participants
-- Email providers
-- Email templates
-- Voucher pools
-- Prize rules
-- Certificate templates
-- Campaigns
-- Analytics
-"""
+"""admin api endpoints: events, participants, email providers/templates, vouchers, prize rules, certificate templates, campaigns, analytics."""
 
 import csv
 import io
@@ -49,7 +36,6 @@ from app.models import (
     PrizeStatus,
     ProviderType,
     Team,
-    TeamMember,
     User,
     Voucher,
     VoucherPool,
@@ -77,7 +63,6 @@ from app.schemas import (
     EventStats,
     EventUpdate,
     ParticipantBulkRankUpdate,
-    ParticipantImportRequest,
     ParticipantImportResponse,
     ParticipantListResponse,
     ParticipantResponse,
@@ -99,25 +84,17 @@ settings = get_settings()
 
 
 def get_template_background_url(template_file: str) -> Optional[str]:
-    """Convert template file path to accessible URL."""
+    """map a stored template file path to its public /uploads/ url."""
     if not template_file:
         return None
-    # template_file is like /app/storage/uploads/certificate-templates/{id}.png
-    # We need to return /uploads/certificate-templates/{id}.png
     if template_file.startswith(settings.upload_dir):
         relative_path = template_file[len(settings.upload_dir):]
         if relative_path.startswith("/"):
             relative_path = relative_path[1:]
         return f"/uploads/{relative_path}"
-    # If it's already a relative path, just prepend /uploads
     if not template_file.startswith("/"):
         return f"/uploads/{template_file}"
     return template_file
-
-
-# =============================================================================
-# Dashboard
-# =============================================================================
 
 
 @router.get("/stats", response_model=DashboardStats)
@@ -126,8 +103,6 @@ async def get_dashboard_stats(
     db: AsyncSession = Depends(get_session),
     redis=Depends(get_redis),
 ):
-    """Get dashboard statistics."""
-    # Event counts
     total_events = await db.scalar(select(func.count()).select_from(Event))
     active_events = await db.scalar(
         select(func.count()).where(
@@ -135,13 +110,11 @@ async def get_dashboard_stats(
         )
     )
     
-    # Participant counts
     total_participants = await db.scalar(select(func.count()).select_from(Participant))
     verified_participants = await db.scalar(
         select(func.count()).where(Participant.email_verified == True)
     )
     
-    # Email counts
     total_emails = await db.scalar(select(func.count()).select_from(EmailLog))
     emails_today = await db.scalar(
         select(func.count()).where(
@@ -149,31 +122,26 @@ async def get_dashboard_stats(
         )
     )
     
-    # Certificate counts
     total_certs = await db.scalar(select(func.count()).select_from(Certificate))
     certs_downloaded = await db.scalar(
         select(func.count()).where(Certificate.downloaded_at.isnot(None))
     )
     
-    # Prize counts
     total_prizes = await db.scalar(select(func.count()).select_from(Prize))
     prizes_claimed = await db.scalar(
         select(func.count()).where(Prize.status == PrizeStatus.CLAIMED)
     )
     
-    # Provider stats
     providers_total = await db.scalar(select(func.count()).select_from(EmailProvider))
     providers_active = await db.scalar(
         select(func.count()).where(EmailProvider.is_active == True)
     )
     
-    # Get daily email capacity
     result = await db.execute(
         select(func.sum(EmailProvider.daily_limit)).where(EmailProvider.is_active == True)
     )
     daily_capacity = result.scalar() or 0
-    
-    # Get today's usage from Redis
+
     daily_used = 0
     result = await db.execute(
         select(EmailProvider).where(EmailProvider.is_active == True)
@@ -203,11 +171,6 @@ async def get_dashboard_stats(
     )
 
 
-# =============================================================================
-# Event Management
-# =============================================================================
-
-
 @router.get("/events", response_model=EventListResponse)
 async def list_all_events(
     status_filter: Optional[str] = None,
@@ -216,7 +179,6 @@ async def list_all_events(
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
 ):
-    """List all events (admin view)."""
     query = select(Event)
     
     if status_filter:
@@ -226,11 +188,9 @@ async def list_all_events(
         except ValueError:
             pass
     
-    # Count total
     count_query = select(func.count()).select_from(query.subquery())
     total = await db.scalar(count_query) or 0
-    
-    # Paginate
+
     query = query.order_by(Event.created_at.desc())
     query = query.offset((page - 1) * per_page).limit(per_page)
     
@@ -289,8 +249,6 @@ async def create_event(
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
 ):
-    """Create a new event."""
-    # Check slug uniqueness
     result = await db.execute(
         select(Event).where(Event.slug == data.slug.lower())
     )
@@ -300,16 +258,14 @@ async def create_event(
             detail="Event slug already exists",
         )
     
-    # Validate CTFd URL against SSRF (public https host only)
+    # ssrf guard: public https host only
     if data.ctfd_url:
         validate_public_url(data.ctfd_url)
 
-    # Encrypt CTFd API key if provided
     ctfd_api_key = None
     if data.ctfd_api_key:
         ctfd_api_key = encrypt_data(data.ctfd_api_key)
-    
-    # Build settings from both settings dict and top-level fields
+
     event_settings = data.get_settings()
     
     event = Event(
@@ -354,7 +310,6 @@ async def get_event_admin(
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
 ):
-    """Get event details (admin view)."""
     result = await db.execute(select(Event).where(Event.id == event_id))
     event = result.scalar_one_or_none()
     
@@ -406,7 +361,6 @@ async def update_event(
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
 ):
-    """Update an event."""
     result = await db.execute(select(Event).where(Event.id == event_id))
     event = result.scalar_one_or_none()
     
@@ -416,11 +370,9 @@ async def update_event(
     if data.name is not None:
         event.name = data.name
     if data.slug is not None:
-        # Validate and normalize slug
         import re
         new_slug = re.sub(r'[^a-z0-9-]', '', data.slug.lower().replace(' ', '-'))
         if new_slug and new_slug != event.slug:
-            # Check for uniqueness
             result = await db.execute(
                 select(Event).where(Event.slug == new_slug, Event.id != event_id)
             )
@@ -447,12 +399,10 @@ async def update_event(
         if data.ctfd_url:
             validate_public_url(data.ctfd_url)
         event.ctfd_url = data.ctfd_url
-    # Empty string means "leave the stored key unchanged" (the form never
-    # receives the current key back, so it submits "" on every save).
+    # empty string means "leave stored key unchanged" (form resubmits "" every save)
     if data.ctfd_api_key:
         event.ctfd_api_key = encrypt_data(data.ctfd_api_key)
-    
-    # Merge settings from both dict and top-level fields
+
     settings_update = data.settings.copy() if data.settings else {}
     if data.is_import_only is not None:
         settings_update["is_import_only"] = data.is_import_only
@@ -499,18 +449,14 @@ async def delete_event(
     user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_session),
 ):
-    """
-    Delete an event and all associated data.
-    
-    This is a destructive operation - only admins can perform it.
-    """
+    """delete an event and all associated data; destructive, admins only."""
     result = await db.execute(select(Event).where(Event.id == event_id))
     event = result.scalar_one_or_none()
     
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
     
-    # Delete the event (cascades to participants, teams, etc.)
+    # cascades to participants, teams, etc.
     await db.delete(event)
     await db.flush()
     
@@ -523,14 +469,12 @@ async def get_event_stats(
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
 ):
-    """Get detailed statistics for an event."""
     result = await db.execute(select(Event).where(Event.id == event_id))
     event = result.scalar_one_or_none()
     
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
     
-    # Participant stats
     participant_count = await db.scalar(
         select(func.count()).where(Participant.event_id == event_id)
     ) or 0
@@ -560,7 +504,6 @@ async def get_event_stats(
         select(func.count()).where(Team.event_id == event_id)
     ) or 0
     
-    # Email stats
     emails_sent = await db.scalar(
         select(func.count())
         .select_from(EmailLog)
@@ -568,7 +511,6 @@ async def get_event_stats(
         .where(Participant.event_id == event_id)
     ) or 0
     
-    # Certificate stats
     certs_generated = await db.scalar(
         select(func.count())
         .select_from(Certificate)
@@ -586,7 +528,6 @@ async def get_event_stats(
         )
     ) or 0
     
-    # Prize stats
     prizes_assigned = await db.scalar(
         select(func.count())
         .select_from(Prize)
@@ -604,7 +545,6 @@ async def get_event_stats(
         )
     ) or 0
     
-    # Voucher stats
     vouchers_total = await db.scalar(
         select(func.count())
         .select_from(Voucher)
@@ -638,11 +578,6 @@ async def get_event_stats(
     )
 
 
-# =============================================================================
-# Participant Management
-# =============================================================================
-
-
 @router.get("/events/{event_id}/participants", response_model=ParticipantListResponse)
 async def list_participants(
     event_id: UUID,
@@ -653,8 +588,6 @@ async def list_participants(
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
 ):
-    """List participants for an event."""
-    # Build base filter conditions
     conditions = [Participant.event_id == event_id]
     
     if search:
@@ -667,11 +600,9 @@ async def list_participants(
     if verified is not None:
         conditions.append(Participant.email_verified == verified)
     
-    # Efficient count using direct COUNT with same conditions
     count_query = select(func.count(Participant.id)).where(*conditions)
     total = await db.scalar(count_query) or 0
     
-    # Paginate - only select needed columns for better performance
     query = (
         select(Participant)
         .where(*conditions)
@@ -720,7 +651,6 @@ async def get_participant(
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
 ):
-    """Get a single participant."""
     result = await db.execute(
         select(Participant).where(Participant.id == participant_id)
     )
@@ -754,7 +684,6 @@ async def update_participant(
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
 ):
-    """Update a participant (name, rank, score, blocked status)."""
     result = await db.execute(
         select(Participant).where(Participant.id == participant_id)
     )
@@ -803,15 +732,11 @@ async def bulk_update_participant_ranks(
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
 ):
-    """
-    Bulk update participant ranks/scores.
-    
-    Accepts: { participants: [{id: "uuid", final_rank: 1, final_score: 100}, ...] }
-    """
+    """bulk update participant ranks/scores; body: {participants: [{id, final_rank, final_score}, ...]}."""
     result = await db.execute(select(Event).where(Event.id == event_id))
     if not result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Event not found")
-    
+
     updated = 0
     for p_data in data.participants:
         p_id = p_data.get("id")
@@ -854,20 +779,13 @@ async def generate_certificates_for_event(
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
 ):
-    """
-    Generate certificate records for all participants in an event.
-    
-    - Does NOT require the event to be finalized
-    - If regenerate=True, recreates certificates for participants who already have one
-    - Rank is optional - participants without rank still get certificates
-    """
+    """create certificate records for all participants; regenerate=True recreates existing, rank optional, no finalize required."""
     result = await db.execute(select(Event).where(Event.id == event_id))
     event = result.scalar_one_or_none()
     
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
     
-    # Get default template
     result = await db.execute(
         select(CertificateTemplate).where(
             CertificateTemplate.event_id == event_id,
@@ -882,17 +800,15 @@ async def generate_certificates_for_event(
             detail="No default certificate template found. Create one and mark it as default.",
         )
     
-    # Get all participants
     result = await db.execute(
         select(Participant).where(Participant.event_id == event_id)
     )
     participants = result.scalars().all()
-    
+
     created = 0
     skipped = 0
-    
+
     for participant in participants:
-        # Check if certificate exists
         result = await db.execute(
             select(Certificate).where(Certificate.participant_id == participant.id)
         )
@@ -903,16 +819,14 @@ async def generate_certificates_for_event(
             continue
         
         if existing and regenerate:
-            # Delete old certificate
             await db.delete(existing)
-        
-        # Create new certificate
+
         cert = Certificate(
             participant_id=participant.id,
             template_id=template.id,
             display_name=participant.name or participant.username or participant.email.split("@")[0],
             team_name=None,
-            rank=participant.final_rank,  # Can be None
+            rank=participant.final_rank,
             verification_code=secrets.token_urlsafe(16),
         )
         db.add(cert)
@@ -920,7 +834,6 @@ async def generate_certificates_for_event(
     
     await db.flush()
     
-    # Queue background task to render certificates
     try:
         from arq import create_pool
         from arq.connections import RedisSettings
@@ -940,8 +853,8 @@ async def generate_certificates_for_event(
             "png",
         )
         await pool.close()
-    except Exception as e:
-        # Don't fail if redis isn't available
+    except Exception:
+        # best-effort: don't fail if redis is unavailable
         pass
     
     return BaseResponse(
@@ -961,22 +874,7 @@ async def import_participants(
     db: AsyncSession = Depends(get_session),
     redis=Depends(get_redis),
 ):
-    """
-    Flexible participant import supporting multiple formats:
-    - .txt: One email per line
-    - .csv: Columns can include email, username, name, team_name, rank, score
-    - .json: Array of participant objects
-    
-    Only email is required - all other fields are auto-generated if missing.
-    
-    For files with >100 participants, processing happens in background.
-    
-    Behavior:
-    - New participants are added
-    - Existing participants (by email) are updated with new data if update_existing=True
-    - Field names are normalized (e.g., "E-mail", "email", "EMAIL" all work)
-    - Extra columns in CSV are preserved in extra_data
-    """
+    """flexible participant import (.txt/.csv/.json); only email required, others auto-generated; existing matched by email and updated when update_existing; >100 rows processed in background."""
     import json as json_lib
     import re
     from arq import create_pool
@@ -993,11 +891,9 @@ async def import_participants(
     text = content.decode("utf-8").strip()
     filename = (file.filename or "").lower()
     
-    # Parse file based on extension/content
     participants_data = []
     
     if filename.endswith(".txt") or (not filename.endswith((".csv", ".json")) and "\n" in text and "," not in text.split("\n")[0]):
-        # Plain text file - one email per line
         email_regex = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
         for line in text.split("\n"):
             line = line.strip()
@@ -1005,7 +901,6 @@ async def import_participants(
                 participants_data.append({"email": line})
                 
     elif filename.endswith(".json") or text.startswith("["):
-        # JSON file - array of objects
         try:
             data = json_lib.loads(text)
             if isinstance(data, list):
@@ -1016,7 +911,6 @@ async def import_participants(
             raise HTTPException(status_code=400, detail=f"Invalid JSON: {str(e)}")
             
     else:
-        # CSV file - flexible column handling
         known_fields = {"email", "e-mail", "username", "name", "full_name", "fullname", 
                         "team_name", "team", "rank", "position", "score", "points"}
         reader = csv.DictReader(io.StringIO(text))
@@ -1038,12 +932,11 @@ async def import_participants(
     if not participants_data:
         raise HTTPException(status_code=400, detail="No valid participants found in file")
     
-    # For large imports (>100), use background processing
     if len(participants_data) > 100:
         job_id = secrets.token_urlsafe(16)
         progress_key = f"import_progress:{job_id}"
         
-        # Initialize progress in Redis BEFORE queueing (so frontend can poll immediately)
+        # seed progress before queueing so the frontend can poll immediately
         await redis.hset(progress_key, mapping={
             "imported": 0,
             "updated": 0,
@@ -1055,7 +948,6 @@ async def import_participants(
         })
         await redis.expire(progress_key, 3600)  # 1 hour expiry
         
-        # Queue background job
         parsed = urlparse(settings.redis_url)
         redis_settings = RedisSettings(
             host=parsed.hostname or "localhost",
@@ -1074,7 +966,6 @@ async def import_participants(
         )
         await pool.close()
         
-        # Log import start
         audit_log = AuditLog(
             action="admin.import_participants_queued",
             user_id=user.id,
@@ -1101,7 +992,6 @@ async def import_participants(
             job_id=job_id,
         )
     
-    # For small imports, process synchronously
     imported = 0
     updated = 0
     skipped = 0
@@ -1115,7 +1005,6 @@ async def import_participants(
             continue
             
         try:
-            # Check if exists
             result = await db.execute(
                 select(Participant).where(
                     Participant.event_id == event_id,
@@ -1126,16 +1015,13 @@ async def import_participants(
             
             if existing:
                 if update_existing:
-                    # Update existing participant with new data
                     was_updated = False
                     
-                    # Update name if provided
                     new_name = p_data.get("name")
                     if new_name and new_name != existing.name:
                         existing.name = new_name
                         was_updated = True
                     
-                    # Update rank if provided
                     if p_data.get("rank"):
                         try:
                             new_rank = int(p_data["rank"])
@@ -1145,7 +1031,6 @@ async def import_participants(
                         except (ValueError, TypeError):
                             pass
                     
-                    # Update score if provided
                     if p_data.get("score"):
                         try:
                             new_score = float(p_data["score"])
@@ -1155,7 +1040,6 @@ async def import_participants(
                         except (ValueError, TypeError):
                             pass
                     
-                    # Update extra_data with new fields
                     extra_data = existing.extra_data or {}
                     if p_data.get("team_name"):
                         extra_data["team_name"] = p_data["team_name"]
@@ -1173,11 +1057,9 @@ async def import_participants(
                     skipped += 1
                 continue
             
-            # Auto-generate username from email if not provided
             username = p_data.get("username")
             if not username:
                 username = email.split("@")[0].lower()
-                # Make unique if needed
                 base_username = username
                 counter = 1
                 while True:
@@ -1194,7 +1076,6 @@ async def import_participants(
             
             password = secrets.token_urlsafe(12) if generate_passwords else "changeme123"
             
-            # Parse rank/score if provided
             final_rank = None
             final_score = None
             if p_data.get("rank"):
@@ -1208,7 +1089,6 @@ async def import_participants(
                 except (ValueError, TypeError):
                     pass
             
-            # Build extra_data from team_name and any extra CSV fields
             extra_data = {}
             if p_data.get("team_name"):
                 extra_data["team_name"] = p_data["team_name"]
@@ -1241,7 +1121,6 @@ async def import_participants(
     
     await db.flush()
     
-    # Log import
     audit_log = AuditLog(
         action="admin.import_participants",
         user_id=user.id,
@@ -1276,7 +1155,6 @@ async def get_import_progress(
     user: User = Depends(require_organizer),
     redis=Depends(get_redis),
 ):
-    """Get background import progress."""
     import json
     
     progress_key = f"import_progress:{job_id}"
@@ -1285,7 +1163,6 @@ async def get_import_progress(
     if not progress:
         raise HTTPException(status_code=404, detail="Import job not found or expired")
     
-    # Decode bytes to proper types
     decoded = {}
     for k, v in progress.items():
         key = k.decode() if isinstance(k, bytes) else k
@@ -1297,7 +1174,6 @@ async def get_import_progress(
             except (ValueError, TypeError):
                 decoded[key] = 0
         elif key == "errors":
-            # Parse JSON list
             try:
                 decoded[key] = json.loads(val) if val else []
             except json.JSONDecodeError:
@@ -1305,7 +1181,6 @@ async def get_import_progress(
         else:
             decoded[key] = val
     
-    # Calculate progress percentage if not present
     if "progress" not in decoded and decoded.get("total", 0) > 0:
         processed = decoded.get("imported", 0) + decoded.get("updated", 0) + decoded.get("skipped", 0) + len(decoded.get("errors", []))
         decoded["progress"] = min(100, int((processed / decoded["total"]) * 100))
@@ -1324,14 +1199,7 @@ async def resend_verifications(
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
 ):
-    """
-    Resend verification emails to unverified participants of an event.
-
-    Enqueues a background job that reuses (or generates) each participant's
-    verification token and re-sends the email. If a participant_ids list is
-    provided in the body, only those participants are targeted; otherwise all
-    unverified participants for the event are targeted.
-    """
+    """resend verification emails to unverified participants; enqueues a background job, targeting participant_ids if given else all unverified for the event."""
     from arq import create_pool
     from arq.connections import RedisSettings
     from urllib.parse import urlparse
@@ -1344,7 +1212,6 @@ async def resend_verifications(
 
     participant_ids = data.participant_ids if data else None
 
-    # Count eligible unverified participants
     conditions = [
         Participant.event_id == event_id,
         Participant.email_verified == False,
@@ -1356,7 +1223,6 @@ async def resend_verifications(
         select(func.count(Participant.id)).where(*conditions)
     ) or 0
 
-    # Queue background job (same arq pattern as import_participants)
     parsed = urlparse(settings.redis_url)
     redis_settings = RedisSettings(
         host=parsed.hostname or "localhost",
@@ -1388,18 +1254,13 @@ async def import_participants_csv(
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
 ):
-    """
-    Import participants from CSV file.
-    
-    Expected columns: email, username, name (optional)
-    """
+    """import participants from csv; columns: email, username, name (optional)."""
     result = await db.execute(select(Event).where(Event.id == event_id))
     event = result.scalar_one_or_none()
     
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
     
-    # Read CSV
     content = await file.read()
     text = content.decode("utf-8")
     reader = csv.DictReader(io.StringIO(text))
@@ -1421,7 +1282,6 @@ async def import_participants_csv(
             continue
         
         try:
-            # Check if exists
             result = await db.execute(
                 select(Participant).where(
                     Participant.event_id == event_id,
@@ -1481,16 +1341,7 @@ async def import_results_csv(
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
 ):
-    """
-    Import results (scores/ranks) from CSV file.
-    
-    Expected columns: 
-    - email/username/name (for matching)
-    - score (optional)
-    - rank (optional)
-    
-    This updates existing participants with their final scores/ranks.
-    """
+    """import results (scores/ranks) from csv; match by email/username/name, columns score and rank optional; updates existing participants."""
     from app.models import Event, Participant
     
     result = await db.execute(select(Event).where(Event.id == event_id))
@@ -1499,7 +1350,6 @@ async def import_results_csv(
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
     
-    # Read CSV
     content = await file.read()
     text = content.decode("utf-8")
     reader = csv.DictReader(io.StringIO(text))
@@ -1509,13 +1359,11 @@ async def import_results_csv(
     not_found = 0
     errors = []
     
-    # Get all participants for this event
     result = await db.execute(
         select(Participant).where(Participant.event_id == event_id)
     )
     all_participants = result.scalars().all()
     
-    # Create lookup maps
     by_email = {p.email.lower(): p for p in all_participants if p.email}
     by_username = {p.username.lower(): p for p in all_participants if p.username}
     by_name = {p.name.lower(): p for p in all_participants if p.name}
@@ -1530,7 +1378,6 @@ async def import_results_csv(
             })
             continue
         
-        # Find participant
         participant = None
         if match_by == "email":
             participant = by_email.get(match_value)
@@ -1544,7 +1391,6 @@ async def import_results_csv(
             continue
         
         try:
-            # Update score and rank
             score_str = row.get("score", "").strip()
             rank_str = row.get("rank", "").strip()
             
@@ -1564,7 +1410,6 @@ async def import_results_csv(
     
     await db.flush()
     
-    # Audit log
     audit_log = AuditLog(
         action="admin.import_results",
         user_id=user.id,
@@ -1594,7 +1439,6 @@ async def verify_participant(
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
 ):
-    """Manually verify a participant's email."""
     result = await db.execute(
         select(Participant).where(
             Participant.id == participant_id,
@@ -1623,7 +1467,6 @@ async def delete_participant(
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
 ):
-    """Delete a participant and their related sessions."""
     result = await db.execute(
         select(Participant).where(
             Participant.id == participant_id,
@@ -1635,7 +1478,7 @@ async def delete_participant(
     if not participant:
         raise HTTPException(status_code=404, detail="Participant not found")
     
-    # Delete related sessions first (foreign key constraint)
+    # delete sessions first (fk constraint)
     from app.models import Session
     await db.execute(
         Session.__table__.delete().where(Session.participant_id == participant_id)
@@ -1647,18 +1490,12 @@ async def delete_participant(
     return BaseResponse(success=True, message="Participant deleted")
 
 
-# =============================================================================
-# Email Provider Management
-# =============================================================================
-
-
 @router.get("/providers", response_model=List[EmailProviderResponse])
 async def list_providers(
     user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_session),
     redis=Depends(get_redis),
 ):
-    """List all email providers."""
     result = await db.execute(
         select(EmailProvider).order_by(EmailProvider.priority)
     )
@@ -1666,11 +1503,9 @@ async def list_providers(
     
     responses = []
     for p in providers:
-        # Get usage from Redis
         daily_used = await redis.get(f"ratelimit:{p.id}:daily")
         hourly_used = await redis.get(f"ratelimit:{p.id}:hourly")
         
-        # Check availability
         circuit_key = f"circuit:{p.id}:open_until"
         circuit_open = await redis.get(circuit_key)
         available = p.is_active and not circuit_open
@@ -1707,8 +1542,6 @@ async def create_provider(
     user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_session),
 ):
-    """Create a new email provider."""
-    # Encrypt sensitive config fields
     config = dict(data.config)
     sensitive_fields = ["password", "api_key", "smtp_password"]
     for field in sensitive_fields:
@@ -1730,7 +1563,6 @@ async def create_provider(
     db.add(provider)
     await db.flush()
     
-    # Log
     audit_log = AuditLog(
         action="admin.provider_create",
         user_id=user.id,
@@ -1767,7 +1599,6 @@ async def update_provider(
     user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_session),
 ):
-    """Update an email provider."""
     result = await db.execute(
         select(EmailProvider).where(EmailProvider.id == provider_id)
     )
@@ -1779,7 +1610,6 @@ async def update_provider(
     if data.name is not None:
         provider.name = data.name
     if data.config is not None:
-        # Encrypt sensitive fields
         config = dict(data.config)
         sensitive_fields = ["password", "api_key", "smtp_password"]
         for field in sensitive_fields:
@@ -1827,7 +1657,6 @@ async def delete_provider(
     user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_session),
 ):
-    """Delete an email provider."""
     result = await db.execute(
         select(EmailProvider).where(EmailProvider.id == provider_id)
     )
@@ -1850,7 +1679,6 @@ async def test_provider(
     db: AsyncSession = Depends(get_session),
     redis=Depends(get_redis),
 ):
-    """Test an email provider by sending a test email."""
     result = await db.execute(
         select(EmailProvider).where(EmailProvider.id == provider_id)
     )
@@ -1859,7 +1687,7 @@ async def test_provider(
     if not provider:
         raise HTTPException(status_code=404, detail="Provider not found")
     
-    # Prepare provider config (credentials are stored encrypted; decrypt for use)
+    # credentials stored encrypted; decrypt for use
     cfg = dict(provider.config or {})
     for field in ("password", "api_key", "smtp_password"):
         if cfg.get(field):
@@ -1873,13 +1701,12 @@ async def test_provider(
         "type": provider.provider_type.value,
         "config": cfg,
         "priority": 1,
-        "daily_limit": 1000,  # Ignore limits for test
+        "daily_limit": 1000,  # ignore limits for test
         "hourly_limit": 100,
         "minute_limit": 10,
         "second_limit": 1,
     }
     
-    # Create test message
     message = EmailMessage(
         to=data.recipient_email,
         subject="ZeroPool Email Provider Test",
@@ -1897,7 +1724,6 @@ async def test_provider(
         body_text=f"ZeroPool Test Email\n\nProvider: {provider.name}\nTimestamp: {datetime.utcnow().isoformat()}",
     )
     
-    # Send via orchestrator
     orchestrator = EmailOrchestrator(redis)
     result = await orchestrator.send(message, [provider_config], max_attempts=1)
     
@@ -1909,18 +1735,12 @@ async def test_provider(
     )
 
 
-# =============================================================================
-# Voucher Management
-# =============================================================================
-
-
 @router.get("/events/{event_id}/voucher-pools", response_model=List[VoucherPoolResponse])
 async def list_voucher_pools(
     event_id: UUID,
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
 ):
-    """List voucher pools for an event."""
     result = await db.execute(
         select(VoucherPool)
         .where(VoucherPool.event_id == event_id)
@@ -1950,7 +1770,6 @@ async def create_voucher_pool(
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
 ):
-    """Create a new voucher pool."""
     result = await db.execute(select(Event).where(Event.id == event_id))
     if not result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Event not found")
@@ -1984,7 +1803,6 @@ async def upload_vouchers(
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
 ):
-    """Upload voucher codes to a pool."""
     result = await db.execute(
         select(VoucherPool).where(VoucherPool.id == pool_id)
     )
@@ -1999,7 +1817,6 @@ async def upload_vouchers(
         if not code:
             continue
         
-        # Check for duplicates
         result = await db.execute(
             select(Voucher).where(Voucher.code == code)
         )
@@ -2026,7 +1843,6 @@ async def upload_vouchers_csv(
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
 ):
-    """Upload voucher codes from CSV file."""
     result = await db.execute(
         select(VoucherPool).where(VoucherPool.id == pool_id)
     )
@@ -2041,10 +1857,9 @@ async def upload_vouchers_csv(
     added = 0
     for line in text.strip().split("\n"):
         code = line.strip()
-        if not code or code.lower() == "code":  # Skip header
+        if not code or code.lower() == "code":  # skip header
             continue
         
-        # Check for duplicates
         result = await db.execute(
             select(Voucher).where(Voucher.code == code)
         )
@@ -2064,18 +1879,12 @@ async def upload_vouchers_csv(
     return BaseResponse(success=True, message=f"Added {added} voucher codes")
 
 
-# =============================================================================
-# Export
-# =============================================================================
-
-
 @router.get("/events/{event_id}/export/participants")
 async def export_participants(
     event_id: UUID,
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
 ):
-    """Export participants as CSV."""
     result = await db.execute(
         select(Participant)
         .where(Participant.event_id == event_id)
@@ -2086,7 +1895,6 @@ async def export_participants(
     output = io.StringIO()
     writer = csv.writer(output)
     
-    # Header
     writer.writerow([
         "email", "username", "name", "verified", "rank", "score",
         "ctfd_provisioned", "source", "registered_at"
@@ -2116,18 +1924,12 @@ async def export_participants(
     )
 
 
-# =============================================================================
-# Email Template Management
-# =============================================================================
-
-
 @router.get("/templates", response_model=List[EmailTemplateResponse])
 async def list_templates(
     event_id: Optional[UUID] = None,
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
 ):
-    """List email templates (global or event-specific)."""
     query = select(EmailTemplate)
     
     if event_id:
@@ -2162,7 +1964,6 @@ async def create_template(
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
 ):
-    """Create an email template."""
     template = EmailTemplate(
         event_id=data.event_id,
         slug=data.slug,
@@ -2198,7 +1999,6 @@ async def get_template(
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
 ):
-    """Get an email template."""
     result = await db.execute(
         select(EmailTemplate).where(EmailTemplate.id == template_id)
     )
@@ -2229,7 +2029,6 @@ async def update_template(
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
 ):
-    """Update an email template."""
     result = await db.execute(
         select(EmailTemplate).where(EmailTemplate.id == template_id)
     )
@@ -2277,7 +2076,6 @@ async def delete_template(
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
 ):
-    """Delete an email template."""
     result = await db.execute(
         select(EmailTemplate).where(EmailTemplate.id == template_id)
     )
@@ -2292,18 +2090,12 @@ async def delete_template(
     return BaseResponse(success=True, message="Template deleted")
 
 
-# =============================================================================
-# Certificate Template Management
-# =============================================================================
-
-
 @router.get("/certificate-templates", response_model=List[CertificateTemplateResponse])
 async def list_certificate_templates(
     event_id: Optional[UUID] = None,
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
 ):
-    """List certificate templates."""
     query = select(CertificateTemplate)
     
     if event_id:
@@ -2341,18 +2133,14 @@ async def create_certificate_template(
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
 ):
-    """Create a certificate template."""
     import base64
     from pathlib import Path
     
     template_file = ""
     
-    # Handle background_image if provided
     if data.background_image:
         if data.background_image.startswith("data:"):
-            # Base64 image - decode and save
             try:
-                # Extract base64 data
                 header, b64_data = data.background_image.split(",", 1)
                 ext = "png"
                 if "jpeg" in header or "jpg" in header:
@@ -2362,7 +2150,6 @@ async def create_certificate_template(
                 
                 image_data = base64.b64decode(b64_data)
                 
-                # Save to uploads folder
                 upload_dir = Path(settings.upload_dir) / "certificate-templates"
                 upload_dir.mkdir(parents=True, exist_ok=True)
                 
@@ -2373,13 +2160,11 @@ async def create_certificate_template(
                 
                 template_file = str(filepath)
             except Exception:
-                pass  # Fall through to empty template_file
+                pass  # fall through to empty template_file
         elif data.background_image.startswith("/uploads/"):
-            # URL path - convert to full file path
             relative_path = data.background_image[len("/uploads/"):]
             template_file = str(Path(settings.upload_dir) / relative_path)
         else:
-            # Might be a full file path already
             template_file = data.background_image
     
     template = CertificateTemplate(
@@ -2397,8 +2182,7 @@ async def create_certificate_template(
         is_default=data.is_default,
     )
     
-    # If setting as default, unset other defaults for this event.
-    # Global templates (no event_id) have no per-event default to manage.
+    # when set default, clear other event defaults; global templates (no event_id) have none
     if data.is_default and data.event_id:
         result = await db.execute(
             select(CertificateTemplate).where(
@@ -2412,16 +2196,13 @@ async def create_certificate_template(
     db.add(template)
     await db.flush()
 
-    # Auto-generate certificates for all participants when template is marked as
-    # default. Only meaningful for event-scoped templates (a global template has
-    # no participant set to generate for).
+    # auto-generate certificates for event participants when marked default (skip global templates)
     if data.is_default and data.event_id:
         result = await db.execute(
             select(Participant).where(Participant.event_id == data.event_id)
         )
         participants = result.scalars().all()
         for participant in participants:
-            # Check if participant already has a certificate
             cert_result = await db.execute(
                 select(Certificate).where(Certificate.participant_id == participant.id)
             )
@@ -2463,7 +2244,6 @@ async def get_certificate_template(
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
 ):
-    """Get a single certificate template by ID."""
     result = await db.execute(
         select(CertificateTemplate).where(CertificateTemplate.id == template_id)
     )
@@ -2499,7 +2279,6 @@ async def upload_certificate_template_image(
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
 ):
-    """Upload template background image."""
     result = await db.execute(
         select(CertificateTemplate).where(CertificateTemplate.id == template_id)
     )
@@ -2508,13 +2287,11 @@ async def upload_certificate_template_image(
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
 
-    # Read the upload and enforce the configured size limit
     content = await file.read()
     if len(content) > settings.max_upload_size_bytes:
         raise HTTPException(status_code=413, detail="File too large")
 
-    # Validate that the bytes are a real raster image (rejects SVG,
-    # spoofed content-types, and non-image payloads used for stored XSS)
+    # validate bytes are a real raster image (rejects svg / spoofed content-types used for stored xss)
     from io import BytesIO
     from PIL import Image
 
@@ -2523,24 +2300,21 @@ async def upload_certificate_template_image(
     except Exception:
         raise HTTPException(status_code=400, detail="File must be a valid image")
 
-    # Save file. NEVER derive the on-disk name from user input: the filename
-    # is forced from the (server-controlled) template UUID.
+    # never derive on-disk name from user input; force it from the server-controlled template uuid
     upload_dir = (Path(settings.upload_dir) / "certificate-templates").resolve()
     upload_dir.mkdir(parents=True, exist_ok=True)
 
     filepath = (upload_dir / f"{template_id}.png").resolve()
 
-    # Defense in depth: ensure the resolved path stays inside the upload dir
+    # defense in depth: ensure resolved path stays inside upload dir
     if upload_dir != filepath.parent:
         raise HTTPException(status_code=400, detail="Invalid file path")
 
     filepath.write_bytes(content)
 
-    # Update template
     template.template_file = str(filepath)
     await db.flush()
-    
-    # Return updated template with background_image URL
+
     return CertificateTemplateResponse(
         id=template.id,
         event_id=template.event_id,
@@ -2568,7 +2342,6 @@ async def update_certificate_template(
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
 ):
-    """Update a certificate template."""
     result = await db.execute(
         select(CertificateTemplate).where(CertificateTemplate.id == template_id)
     )
@@ -2599,7 +2372,6 @@ async def update_certificate_template(
         template.is_active = data.is_active
     if data.is_default is not None:
         if data.is_default:
-            # Unset other defaults
             result = await db.execute(
                 select(CertificateTemplate).where(
                     CertificateTemplate.event_id == template.event_id,
@@ -2611,7 +2383,7 @@ async def update_certificate_template(
                 existing.is_default = False
         template.is_default = data.is_default
         
-        # AUTO-GENERATE certificates when template is marked as default
+        # marking default auto-generates certificates for participants
         if data.is_default:
             result = await db.execute(
                 select(Participant).where(Participant.event_id == template.event_id)
@@ -2619,7 +2391,6 @@ async def update_certificate_template(
             participants = result.scalars().all()
             
             for participant in participants:
-                # Check if certificate already exists
                 cert_result = await db.execute(
                     select(Certificate).where(Certificate.participant_id == participant.id)
                 )
@@ -2634,13 +2405,11 @@ async def update_certificate_template(
                     )
                     db.add(cert)
     
-    # Handle background_image update
     if data.background_image is not None:
         import base64
         from pathlib import Path
         
         if data.background_image.startswith("data:"):
-            # Base64 image - decode and save
             try:
                 header, b64_data = data.background_image.split(",", 1)
                 ext = "png"
@@ -2693,7 +2462,6 @@ async def delete_certificate_template(
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
 ):
-    """Delete a certificate template."""
     result = await db.execute(
         select(CertificateTemplate).where(CertificateTemplate.id == template_id)
     )
@@ -2702,24 +2470,18 @@ async def delete_certificate_template(
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
     
-    # Delete the template file if it exists
     if template.template_file:
         try:
             filepath = Path(template.template_file)
             if filepath.exists():
                 filepath.unlink()
         except Exception:
-            pass  # Ignore file deletion errors
+            pass  # ignore file deletion errors
     
     await db.delete(template)
     await db.flush()
     
     return BaseResponse(success=True, message="Template deleted successfully")
-
-
-# =============================================================================
-# Prize Rules Management
-# =============================================================================
 
 
 @router.get("/events/{event_id}/prize-rules", response_model=List[PrizeRuleResponse])
@@ -2728,7 +2490,6 @@ async def list_prize_rules(
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
 ):
-    """List prize rules for an event."""
     result = await db.execute(
         select(PrizeRule)
         .where(PrizeRule.event_id == event_id)
@@ -2764,12 +2525,10 @@ async def create_prize_rule(
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
 ):
-    """Create a prize rule."""
     result = await db.execute(select(Event).where(Event.id == event_id))
     if not result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Event not found")
     
-    # Validate voucher pool if specified
     if data.voucher_pool_id:
         result = await db.execute(
             select(VoucherPool).where(VoucherPool.id == data.voucher_pool_id)
@@ -2813,7 +2572,6 @@ async def delete_prize_rule(
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
 ):
-    """Delete a prize rule."""
     result = await db.execute(
         select(PrizeRule).where(PrizeRule.id == rule_id)
     )
@@ -2835,7 +2593,6 @@ async def assign_prize(
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
 ):
-    """Manually assign a prize to a participant."""
     try:
         participant_id = UUID(str(data["participant_id"]))
     except (KeyError, ValueError):
@@ -2867,13 +2624,7 @@ async def assign_prize(
     return BaseResponse(success=True, message="Prize assigned")
 
 
-# =============================================================================
-# Campaign Management
-# =============================================================================
-
-
 def _campaign_response(c: EmailCampaign) -> CampaignResponse:
-    """Build a CampaignResponse from an EmailCampaign model."""
     return CampaignResponse(
         id=c.id,
         event_id=c.event_id,
@@ -2898,7 +2649,6 @@ async def list_campaigns(
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
 ):
-    """List email campaigns."""
     query = select(EmailCampaign)
 
     if event_id:
@@ -2918,15 +2668,12 @@ async def create_campaign(
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
 ):
-    """Create an email campaign."""
-    # Validate event
     result = await db.execute(
         select(Event).where(Event.id == data.event_id)
     )
     if not result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Event not found")
 
-    # Look up the template and copy its content onto the campaign
     result = await db.execute(
         select(EmailTemplate).where(EmailTemplate.id == data.template_id)
     )
@@ -2960,11 +2707,7 @@ async def start_campaign(
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
 ):
-    """
-    Start a campaign.
-    
-    This sets the campaign to pending and the worker will pick it up.
-    """
+    """start a campaign: mark it scheduled so the process_pending_campaigns cron picks it up."""
     result = await db.execute(
         select(EmailCampaign).where(EmailCampaign.id == campaign_id)
     )
@@ -2979,7 +2722,6 @@ async def start_campaign(
             detail=f"Campaign is already {campaign.status.value}",
         )
 
-    # Count recipients
     query = select(func.count()).select_from(Participant)
 
     if campaign.event_id:
@@ -2994,7 +2736,7 @@ async def start_campaign(
     total = await db.scalar(query) or 0
 
     campaign.total_recipients = total
-    # Move to SCHEDULED so the process_pending_campaigns cron picks it up.
+    # scheduled so the process_pending_campaigns cron picks it up
     campaign.status = CampaignStatus.SCHEDULED
     campaign.scheduled_for = campaign.scheduled_for or datetime.utcnow()
 
@@ -3012,7 +2754,7 @@ async def pause_campaign(
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
 ):
-    """Pause a sending campaign so the worker stops picking it up."""
+    """pause a sending campaign so the worker stops picking it up."""
     result = await db.execute(
         select(EmailCampaign).where(EmailCampaign.id == campaign_id)
     )
@@ -3039,7 +2781,7 @@ async def resume_campaign(
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
 ):
-    """Resume a paused campaign by rescheduling it for the cron to re-pick."""
+    """resume a paused campaign by rescheduling it for the cron to re-pick."""
     result = await db.execute(
         select(EmailCampaign).where(EmailCampaign.id == campaign_id)
     )
@@ -3054,7 +2796,7 @@ async def resume_campaign(
             detail=f"Cannot resume campaign with status {campaign.status.value}",
         )
 
-    # Back to SCHEDULED so the process_pending_campaigns cron re-picks it up.
+    # scheduled so the process_pending_campaigns cron re-picks it up
     campaign.status = CampaignStatus.SCHEDULED
     campaign.scheduled_for = campaign.scheduled_for or datetime.utcnow()
     await db.flush()
@@ -3068,7 +2810,6 @@ async def cancel_campaign(
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
 ):
-    """Cancel a running campaign."""
     result = await db.execute(
         select(EmailCampaign).where(EmailCampaign.id == campaign_id)
     )
@@ -3097,7 +2838,6 @@ async def delete_campaign(
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
 ):
-    """Delete an email campaign."""
     result = await db.execute(
         select(EmailCampaign).where(EmailCampaign.id == campaign_id)
     )
@@ -3112,11 +2852,6 @@ async def delete_campaign(
     return BaseResponse(success=True, message="Campaign deleted")
 
 
-# =============================================================================
-# Event Finalization
-# =============================================================================
-
-
 @router.post("/events/{event_id}/finalize", response_model=BaseResponse)
 async def finalize_event(
     event_id: UUID,
@@ -3125,21 +2860,13 @@ async def finalize_event(
     db: AsyncSession = Depends(get_session),
     redis=Depends(get_redis),
 ):
-    """
-    Finalize an event.
-    
-    This:
-    1. Sets event status to COMPLETED
-    2. Assigns prizes based on prize rules
-    3. Creates certificate records
-    """
+    """finalize an event: assign prizes per rules, create certificate records, mark it ended, and email prize winners."""
     result = await db.execute(select(Event).where(Event.id == event_id))
     event = result.scalar_one_or_none()
     
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
     
-    # Get prize rules
     result = await db.execute(
         select(PrizeRule)
         .where(PrizeRule.event_id == event_id, PrizeRule.is_active == True)
@@ -3147,7 +2874,7 @@ async def finalize_event(
     )
     rules = result.scalars().all()
     
-    # Get participants with rankings (for prizes)
+    # ranked participants (for prizes)
     result = await db.execute(
         select(Participant)
         .where(
@@ -3158,7 +2885,7 @@ async def finalize_event(
     )
     ranked_participants = result.scalars().all()
     
-    # Get ALL participants (for certificates - rank is optional)
+    # all participants (for certificates; rank optional)
     result = await db.execute(
         select(Participant)
         .where(Participant.event_id == event_id)
@@ -3169,14 +2896,11 @@ async def finalize_event(
     certs_created = 0
     prize_winners = {}  # participant_id -> participant, for prize_ready emails
 
-    # Assign prizes only to ranked participants
     for participant in ranked_participants:
         rank = participant.final_rank
-        
-        # Find matching prize rules
+
         for rule in rules:
             if rule.rank_from <= rank <= (rule.rank_to or rank):
-                # Check if prize already assigned
                 result = await db.execute(
                     select(Prize).where(
                         Prize.participant_id == participant.id,
@@ -3186,7 +2910,6 @@ async def finalize_event(
                 if result.scalar_one_or_none():
                     continue
 
-                # Get voucher if needed
                 voucher_id = None
                 if rule.voucher_pool_id:
                     result = await db.execute(
@@ -3197,11 +2920,10 @@ async def finalize_event(
                     )
                     voucher = result.scalar_one_or_none()
                     if voucher:
-                        # No RESERVED state exists; mark claimed on assignment.
+                        # no reserved state; mark claimed on assignment
                         voucher.status = VoucherStatus.CLAIMED
                         voucher_id = voucher.id
 
-                # Build prize type/data from the rule shape
                 if rule.voucher_pool_id and voucher_id:
                     p_type = "voucher"
                     p_data = {
@@ -3217,7 +2939,6 @@ async def finalize_event(
                     p_type = "custom"
                     p_data = rule.custom_prize or {}
 
-                # Create prize
                 prize = Prize(
                     participant_id=participant.id,
                     rule_id=rule.id,
@@ -3228,7 +2949,6 @@ async def finalize_event(
                 prizes_assigned += 1
                 prize_winners[participant.id] = participant
 
-    # Get default template once for certificate creation
     result = await db.execute(
         select(CertificateTemplate).where(
             CertificateTemplate.event_id == event_id,
@@ -3236,10 +2956,8 @@ async def finalize_event(
         )
     )
     default_template = result.scalar_one_or_none()
-    
-    # Create certificates for ALL participants (rank is optional)
+
     for participant in all_participants:
-        # Check if certificate already exists
         result = await db.execute(
             select(Certificate).where(Certificate.participant_id == participant.id)
         )
@@ -3248,15 +2966,14 @@ async def finalize_event(
                 participant_id=participant.id,
                 template_id=default_template.id,
                 display_name=participant.name or participant.username or participant.email.split("@")[0],
-                team_name=None,  # Will be populated if team mode
-                rank=participant.final_rank,  # Can be None
+                team_name=None,
+                rank=participant.final_rank,
                 verification_code=secrets.token_urlsafe(16),
             )
             db.add(cert)
             certs_created += 1
 
-    # Notify winners that their prizes are ready (same inline pattern as
-    # auth._send_verification_email). Best-effort: never block finalization.
+    # email prize winners (best-effort; never block finalization)
     if prize_winners:
         result = await db.execute(
             select(EmailProvider).where(
@@ -3332,7 +3049,6 @@ async def finalize_event(
 
     event.status = EventStatus.ENDED
 
-    # Audit log
     audit_log = AuditLog(
         action="admin.event_finalize",
         user_id=user.id,
@@ -3355,11 +3071,6 @@ async def finalize_event(
     )
 
 
-# =============================================================================
-# CTFd Integration
-# =============================================================================
-
-
 @router.post("/events/{event_id}/ctfd/sync")
 async def sync_ctfd(
     event_id: UUID,
@@ -3367,17 +3078,7 @@ async def sync_ctfd(
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
 ):
-    """
-    Trigger CTFd synchronization.
-    
-    This fetches the scoreboard from CTFd and updates participant rankings
-    in the ZeroPool database. Participants are matched by:
-    1. ctfd_user_id (if they were provisioned to CTFd)
-    2. name match (for imported participants)
-    3. team name match (for team mode)
-    
-    Returns detailed sync statistics.
-    """
+    """sync the ctfd scoreboard into participant rankings; match by ctfd_user_id, then name, then team name."""
     from app.services.ctfd import CTFdSyncService
     
     result = await db.execute(select(Event).where(Event.id == event_id))
@@ -3392,20 +3093,16 @@ async def sync_ctfd(
             detail="CTFd URL and API key are required",
         )
     
-    # Decrypt API key
     from app.utils.security import decrypt_data
     api_key = decrypt_data(event.ctfd_api_key)
     
-    # Create sync service with database access
     sync_service = CTFdSyncService(event.ctfd_url, api_key, db=db)
     
     try:
         stats = await sync_service.sync_results_for_event(event_id)
         
-        # Update sync timestamp
         event.ctfd_synced_at = datetime.utcnow()
         
-        # Build summary message
         parts = []
         if stats.get("teams_created"):
             parts.append(f"{stats['teams_created']} teams created")
@@ -3419,7 +3116,6 @@ async def sync_ctfd(
         else:
             message = "Synced: " + ", ".join(parts)
         
-        # Audit log
         audit_log = AuditLog(
             action="admin.ctfd_sync",
             user_id=user.id,
@@ -3451,11 +3147,7 @@ async def provision_ctfd_users(
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
 ):
-    """
-    Provision verified participants to CTFd.
-    
-    Creates user accounts on the linked CTFd instance.
-    """
+    """provision verified participants to ctfd (creates accounts on the linked instance)."""
     from app.services.ctfd import CTFdSyncService
     
     result = await db.execute(select(Event).where(Event.id == event_id))
@@ -3473,13 +3165,11 @@ async def provision_ctfd_users(
     from app.utils.security import decrypt_data
     api_key = decrypt_data(event.ctfd_api_key)
     
-    # Create sync service with corrected initialization
     sync_service = CTFdSyncService(event.ctfd_url, api_key, db=db)
     
     try:
         provisioned = await sync_service.provision_users_for_event(event_id)
         
-        # Audit log
         audit_log = AuditLog(
             action="admin.ctfd_provision",
             user_id=user.id,
@@ -3503,11 +3193,6 @@ async def provision_ctfd_users(
         raise HTTPException(status_code=500, detail="CTFd provisioning failed")
 
 
-# =============================================================================
-# User Management (Admin only)
-# =============================================================================
-
-
 @router.get("/users")
 async def list_users(
     page: int = 1,
@@ -3515,7 +3200,6 @@ async def list_users(
     user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_session),
 ):
-    """List admin/organizer users."""
     query = select(User).order_by(User.created_at.desc())
     
     count_query = select(func.count()).select_from(User)
@@ -3554,7 +3238,6 @@ async def update_user_role(
     current_user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_session),
 ):
-    """Update a user's role."""
     from app.models import UserRole
     
     result = await db.execute(select(User).where(User.id == user_id))
@@ -3587,16 +3270,13 @@ async def create_user(
     current_user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_session),
 ):
-    """Create a new admin/organizer user."""
     from app.models import UserRole
     from app.utils.security import hash_password
-    
-    # Check if email exists
+
     result = await db.execute(select(User).where(User.email == data.email.lower()))
     if result.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Email already registered")
-    
-    # Check if username exists
+
     result = await db.execute(select(User).where(User.username == data.username.lower()))
     if result.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Username already taken")
@@ -3626,7 +3306,6 @@ async def delete_user(
     current_user: User = Depends(require_admin),
     db: AsyncSession = Depends(get_session),
 ):
-    """Delete an admin/organizer user."""
     if user_id == current_user.id:
         raise HTTPException(status_code=400, detail="Cannot delete yourself")
     

@@ -1,8 +1,4 @@
-"""
-Participant API Routes
-
-Endpoints for authenticated participants.
-"""
+"""participant api routes."""
 
 from datetime import datetime, timedelta, timezone
 import secrets
@@ -24,35 +20,27 @@ from app.api.deps import (
 )
 from app.config import get_settings
 from app.database import get_session
-from app.models import AuditLog, Certificate, EmailLog, EmailStatus, Event, Participant, Prize, PrizeRule, PrizeStatus, Session, Team, TeamMember
+from app.models import AuditLog, Certificate, EmailLog, EmailStatus, Event, Participant, Prize, PrizeRule, PrizeStatus, Team, TeamMember
 from app.schemas import BaseResponse, CertificateCustomizeRequest, ParticipantResponse, ParticipantUpdate
-from app.services.email import EmailMessage, EmailOrchestrator, render_email, render_subject
+from app.services.email import EmailMessage, EmailOrchestrator
 from app.utils.ratelimit import rate_limit
 
 router = APIRouter()
 settings = get_settings()
 
 
-# =============================================================================
-# Magic Link Login (Passwordless)
-# =============================================================================
-
-
 class RequestAccessRequest(BaseModel):
-    """Request magic link access."""
     email: EmailStr
-    event_id: str | None = None  # Optional - required if user has multiple events
+    event_id: str | None = None  # optional - required if user has multiple events
 
 
 class EventInfo(BaseModel):
-    """Event info for multi-event picker."""
     id: str
     name: str
     slug: str
 
 
 class RequestAccessResponse(BaseModel):
-    """Response for request-access - may include event picker if multiple."""
     success: bool
     message: str
     requires_event_selection: bool = False
@@ -70,13 +58,7 @@ async def request_access(
     db: AsyncSession = Depends(get_session),
     redis=Depends(get_redis),
 ):
-    """
-    Request a magic link to access the participant portal.
-    
-    If the email is registered for multiple events, returns the list of events
-    so the user can pick which one to access (saves emails).
-    """
-    # Find ALL participants by email (could be in multiple events)
+    """request a magic link to access the participant portal."""
     result = await db.execute(
         select(Participant).where(
             Participant.email == data.email.lower(),
@@ -86,38 +68,33 @@ async def request_access(
     )
     participants = result.scalars().all()
     
-    # Always return success to prevent email enumeration
+    # always return success to prevent email enumeration
     if not participants:
         return RequestAccessResponse(
             success=True,
             message="If your email is registered, you will receive an access link shortly.",
         )
     
-    # Never reveal which events an email is registered for to an unauthenticated
-    # caller. Select the participant(s) to notify, then always return the same
-    # generic response.
+    # never reveal which events an email is registered for to an unauthenticated caller; select who to notify, then always return the same generic response
     if data.event_id:
-        # Specific event requested - only notify that one (if it matches)
         selected = [p for p in participants if str(p.event_id) == data.event_id]
     else:
-        # Single or multiple events without a selection: send one magic link per
-        # event, each scoped to its own event.
+        # no selection: send one magic link per event, each scoped to its own event
         selected = list(participants)
 
     now = datetime.now(timezone.utc)
 
     for participant in selected:
-        # Rate limit: max 1 request per 5 minutes (per participant)
+        # rate limit: max 1 request per 5 minutes per participant
         if participant.magic_link_sent_at:
             sent_at = participant.magic_link_sent_at
-            # Handle timezone-naive datetime
+            # handle timezone-naive datetime
             if sent_at.tzinfo is None:
                 sent_at = sent_at.replace(tzinfo=timezone.utc)
             time_since_last = now - sent_at
             if time_since_last < timedelta(minutes=5):
                 continue
 
-        # Generate magic link token
         magic_token = secrets.token_urlsafe(32)
         participant.magic_link_token = magic_token
         participant.magic_link_sent_at = now
@@ -125,16 +102,13 @@ async def request_access(
 
         await db.flush()
 
-        # Get event for email context
         event_result = await db.execute(
             select(Event).where(Event.id == participant.event_id)
         )
         event = event_result.scalar_one_or_none()
 
-        # Build magic link URL
         magic_link_url = f"{settings.app_url}/portal/verify?token={magic_token}"
 
-        # Send email
         await _send_magic_link_email(db, redis, participant, event, magic_link_url)
 
     return RequestAccessResponse(
@@ -150,9 +124,7 @@ async def verify_magic_link(
     token: str,
     db: AsyncSession = Depends(get_session),
 ):
-    """
-    Verify magic link token and create session.
-    """
+    """verify magic link token and create session."""
     result = await db.execute(
         select(Participant).where(
             Participant.magic_link_token == token,
@@ -168,11 +140,9 @@ async def verify_magic_link(
             detail="Invalid or expired access link. Please request a new one.",
         )
     
-    # Clear magic link token
     participant.magic_link_token = None
     participant.magic_link_expires_at = None
     
-    # Create session
     session_id = await create_session(
         db,
         participant_id=participant.id,
@@ -180,7 +150,6 @@ async def verify_magic_link(
         user_agent=get_user_agent(request),
     )
     
-    # Log access
     audit_log = AuditLog(
         action="participant.magic_link_login",
         participant_id=participant.id,
@@ -190,7 +159,6 @@ async def verify_magic_link(
     db.add(audit_log)
     await db.flush()
     
-    # Set session cookie
     response.set_cookie(
         key=settings.session_cookie_name,
         value=session_id,
@@ -212,9 +180,7 @@ async def logout(
     db: AsyncSession = Depends(get_session),
     session=Depends(get_current_session),
 ):
-    """
-    Logout participant and clear session.
-    """
+    """log out participant and clear session."""
     if session:
         await delete_session(db, session.id)
     
@@ -230,10 +196,8 @@ async def _send_magic_link_email(
     event: Event,
     magic_link_url: str,
 ):
-    """Send magic link access email."""
     from app.models import EmailProvider
-    
-    # Get active providers
+
     result = await db.execute(
         select(EmailProvider).where(
             EmailProvider.is_active == True
@@ -317,17 +281,11 @@ async def _send_magic_link_email(
     await db.flush()
 
 
-# =============================================================================
-# Profile Endpoints
-# =============================================================================
-
-
 @router.get("/me", response_model=ParticipantResponse)
 async def get_current_participant_info(
     participant: Participant = Depends(require_participant),
     db: AsyncSession = Depends(get_session),
 ):
-    """Get current participant's profile."""
     return ParticipantResponse(
         id=participant.id,
         email=participant.email,
@@ -352,7 +310,6 @@ async def update_current_participant(
     participant: Participant = Depends(require_participant),
     db: AsyncSession = Depends(get_session),
 ):
-    """Update current participant's profile."""
     if data.name is not None:
         participant.name = data.name
     
@@ -384,7 +341,6 @@ async def get_participant_event(
     participant: Participant = Depends(require_participant),
     db: AsyncSession = Depends(get_session),
 ):
-    """Get the event the participant is registered for."""
     result = await db.execute(
         select(Event).where(Event.id == participant.event_id)
     )
@@ -412,12 +368,6 @@ async def get_participant_events(
     participant: Participant = Depends(require_participant),
     db: AsyncSession = Depends(get_session),
 ):
-    """
-    Get all events the participant is registered for.
-    
-    Returns a list of events.
-    """
-    # Get the event(s) the participant is part of
     result = await db.execute(
         select(Event).where(Event.id == participant.event_id)
     )
@@ -443,8 +393,6 @@ async def get_participant_team(
     participant: Participant = Depends(require_participant),
     db: AsyncSession = Depends(get_session),
 ):
-    """Get the participant's team (if any)."""
-    # Find team membership
     result = await db.execute(
         select(TeamMember).where(TeamMember.participant_id == participant.id)
     )
@@ -453,7 +401,6 @@ async def get_participant_team(
     if not membership:
         return {"team": None}
     
-    # Get team details
     result = await db.execute(
         select(Team).where(Team.id == membership.team_id)
     )
@@ -462,7 +409,6 @@ async def get_participant_team(
     if not team:
         return {"team": None}
     
-    # Get team members
     result = await db.execute(
         select(TeamMember, Participant)
         .join(Participant, TeamMember.participant_id == Participant.id)
@@ -496,12 +442,7 @@ async def get_participant_results(
     participant: Participant = Depends(require_verified_participant),
     db: AsyncSession = Depends(get_session),
 ):
-    """
-    Get participant's final results.
-    
-    Available after event ends and results are synced.
-    """
-    # Check if event has ended
+    """get participant's final results; available after the event ends and results are synced."""
     result = await db.execute(
         select(Event).where(Event.id == participant.event_id)
     )
@@ -519,7 +460,6 @@ async def get_participant_results(
             detail="Results not yet available",
         )
     
-    # Get prizes
     result = await db.execute(
         select(Prize).where(Prize.participant_id == participant.id)
     )
@@ -545,17 +485,12 @@ async def get_participant_prizes(
     participant: Participant = Depends(require_verified_participant),
     db: AsyncSession = Depends(get_session),
 ):
-    """
-    Get participant's prizes.
-    
-    Returns list of prizes assigned to this participant.
-    """
     result = await db.execute(
         select(Prize).where(Prize.participant_id == participant.id)
     )
     prizes = result.scalars().all()
 
-    # Event name for display (all prizes belong to this participant's event)
+    # event name for display (all prizes belong to this participant's event)
     event_result = await db.execute(
         select(Event).where(Event.id == participant.event_id)
     )
@@ -567,7 +502,7 @@ async def get_participant_prizes(
         prize_data = p.prize_data or {}
         status = p.status.value if hasattr(p.status, "value") else p.status
 
-        # Prize name: prefer explicit title, fall back to the rule name, then type
+        # prize name: prefer explicit title, fall back to the rule name, then type
         name = prize_data.get("title")
         if not name and p.rule_id:
             rule_result = await db.execute(
@@ -590,7 +525,7 @@ async def get_participant_prizes(
             "claimed_at": p.claimed_at.isoformat() if p.claimed_at else None,
         }
 
-        # Only reveal voucher code/instructions once the prize is claimed
+        # only reveal voucher code/instructions once the prize is claimed
         if p.status == PrizeStatus.CLAIMED:
             item["voucher_code"] = prize_data.get("code")
             item["voucher_instructions"] = prize_data.get("instructions")
@@ -605,13 +540,7 @@ async def get_participant_certificates(
     participant: Participant = Depends(require_verified_participant),
     db: AsyncSession = Depends(get_session),
 ):
-    """
-    Get participant's certificates.
-    
-    Returns list of certificates generated for this participant.
-    Uses lazy creation - if no certificate exists but participant is eligible,
-    creates one on-the-fly using the default template.
-    """
+    """get participant's certificates; lazily creates one from the default template if none exists and the participant is eligible."""
     from app.models import CertificateTemplate
     import secrets
     
@@ -620,16 +549,15 @@ async def get_participant_certificates(
     )
     certificates = list(result.scalars().all())
     
-    # Get event info
     event_result = await db.execute(
         select(Event).where(Event.id == participant.event_id)
     )
     event = event_result.scalar_one_or_none()
     event_name = event.name if event else "Unknown Event"
     
-    # LAZY CREATION: If no certificates exist for a verified participant, create one
+    # lazy creation: no certificates for a verified participant -> create one
     if not certificates and participant.email_verified:
-        # Find a default template for this event (or global default)
+        # default template for this event (or global default)
         template_result = await db.execute(
             select(CertificateTemplate).where(
                 CertificateTemplate.event_id == participant.event_id,
@@ -638,7 +566,7 @@ async def get_participant_certificates(
         )
         template = template_result.scalar_one_or_none()
         
-        # If no event-specific default, try global default
+        # no event-specific default -> try global default
         if not template:
             template_result = await db.execute(
                 select(CertificateTemplate).where(
@@ -648,7 +576,7 @@ async def get_participant_certificates(
             )
             template = template_result.scalar_one_or_none()
         
-        # If still no template, try any template for the event
+        # still none -> any template for the event
         if not template:
             template_result = await db.execute(
                 select(CertificateTemplate).where(
@@ -658,7 +586,7 @@ async def get_participant_certificates(
             template = template_result.scalar_one_or_none()
         
         if template:
-            # Create certificate record (lazy - will be generated on download)
+            # create certificate record (generated on download)
             new_cert = Certificate(
                 participant_id=participant.id,
                 template_id=template.id,
@@ -672,17 +600,14 @@ async def get_participant_certificates(
             await db.refresh(new_cert)
             certificates = [new_cert]
     
-    # Build response with template info
     cert_list = []
     for c in certificates:
-        # Get template for format info
         template_result = await db.execute(
             select(CertificateTemplate).where(CertificateTemplate.id == c.template_id)
         )
         template = template_result.scalar_one_or_none()
         output_format = template.output_format if template else "png"
         
-        # Determine certificate type based on rank
         if c.rank:
             if c.rank <= 3:
                 cert_type = "winner"
@@ -693,10 +618,8 @@ async def get_participant_certificates(
         else:
             cert_type = "participation"
         
-        # Build file URL if file exists
         file_url = None
         if c.file_path:
-            # Convert file path to URL
             file_url = f"/uploads/certificates/{c.verification_code}.{output_format}"
         
         cert_list.append({
@@ -731,13 +654,7 @@ async def download_certificate(
     db: AsyncSession = Depends(get_session),
     redis=Depends(get_redis),
 ):
-    """
-    Download a certificate.
-    
-    Generates the certificate on-the-fly if not already generated.
-    Supports PDF and PNG formats.
-    Rate limited to 10 downloads per minute per participant.
-    """
+    """download a certificate (generated on-the-fly if needed); rate limited to 10 downloads/minute per participant."""
     from uuid import UUID as PyUUID
     from fastapi.responses import FileResponse
     from app.models import CertificateTemplate
@@ -747,14 +664,12 @@ async def download_certificate(
     
     settings = get_settings()
     
-    # Rate limiting: 10 downloads per minute per participant
     rate_key = f"cert_download:{participant.id}:minute"
     current_count = await redis.incr(rate_key)
     if current_count == 1:
-        await redis.expire(rate_key, 60)  # Expire after 1 minute
+        await redis.expire(rate_key, 60)  # expire after 1 minute
     
     if current_count > 10:
-        # Log potential abuse
         audit_log = AuditLog(
             participant_id=participant.id,
             actor_type="participant",
@@ -797,7 +712,7 @@ async def download_certificate(
             detail="Certificate not found",
         )
     
-    # Get template first to check if regeneration needed
+    # fetch template first to decide whether regeneration is needed
     result = await db.execute(
         select(CertificateTemplate).where(CertificateTemplate.id == certificate.template_id)
     )
@@ -809,8 +724,7 @@ async def download_certificate(
             detail="Certificate template not found",
         )
     
-    # Check if we need to generate/regenerate the certificate
-    # Regenerate if: no file, file doesn't exist, or template was updated after certificate was generated
+    # regenerate if: no file, file missing, or template updated after generation
     needs_regeneration = (
         not certificate.file_path or 
         not os.path.exists(certificate.file_path) or
@@ -818,7 +732,6 @@ async def download_certificate(
     )
     
     if needs_regeneration:
-        # Check if template file exists
         template_path = template.template_file
         if template_path and not template_path.startswith("/"):
             template_path = os.path.join(settings.upload_dir, template_path)
@@ -829,13 +742,11 @@ async def download_certificate(
                 detail="Certificate template image not found",
             )
         
-        # Get event
         result = await db.execute(
             select(Event).where(Event.id == participant.event_id)
         )
         event = result.scalar_one_or_none()
         
-        # Build text zones from template
         text_zones = []
         if template.text_zones:
             for zone_config in template.text_zones:
@@ -853,7 +764,6 @@ async def download_certificate(
                     is_percentage=zone_config.get("is_percentage", True),
                 ))
         
-        # Build QR zone
         qr_zone = None
         if template.qr_zone:
             qr_zone = QRZone(
@@ -863,7 +773,6 @@ async def download_certificate(
                 is_percentage=template.qr_zone.get("is_percentage", True),
             )
         
-        # Create certificate data
         cert_data = CertificateData(
             participant_id=certificate.participant_id,
             display_name=certificate.display_name or participant.name or participant.username or "Participant",
@@ -873,7 +782,6 @@ async def download_certificate(
             event_name=event.name if event else "Event",
         )
         
-        # Generate certificate
         generator = CertificateGenerator()
         verify_url = f"{settings.app_url}/verify"
         
@@ -891,22 +799,19 @@ async def download_certificate(
                 detail=f"Failed to generate certificate: {result.error}",
             )
         
-        # Update certificate record
         certificate.file_path = result.file_path
         certificate.generated_at = datetime.now(timezone.utc)
         await db.flush()
     
-    # Update download tracking and lock name
     certificate.download_count += 1
     certificate.downloaded_at = datetime.now(timezone.utc)
     
-    # Lock the name on first download to prevent abuse
+    # lock the name on first download to prevent abuse
     if not certificate.name_locked:
         certificate.name_locked = True
     
     await db.commit()
     
-    # Determine content type
     media_type = "application/pdf" if format == "pdf" else "image/png"
     filename = f"certificate_{certificate.verification_code}.{format}"
     
@@ -925,18 +830,8 @@ async def update_certificate_display_name(
     participant: Participant = Depends(require_verified_participant),
     db: AsyncSession = Depends(get_session),
 ):
-    """
-    Update the display name on a certificate.
-    
-    Allows participants to customize how their name appears on the certificate.
-    This will regenerate the certificate on next download.
-    
-    **Abuse Prevention:**
-    - Name is locked after first certificate download
-    - Only ONE name edit is allowed before download
-    """
+    """update a certificate's display name; regenerates on next download. name locks after first download and only one edit is allowed."""
     from uuid import UUID as PyUUID
-    from datetime import datetime, timezone
     import os
     
     try:
@@ -961,14 +856,12 @@ async def update_certificate_display_name(
             detail="Certificate not found",
         )
     
-    # Abuse Prevention: Check if name is locked (already downloaded)
     if certificate.name_locked:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Certificate name is locked. Name cannot be changed after a certificate has been downloaded.",
         )
     
-    # Abuse Prevention: Limit name edits to 1
     MAX_NAME_EDITS = 1
     if certificate.edit_count >= MAX_NAME_EDITS:
         raise HTTPException(
@@ -976,17 +869,14 @@ async def update_certificate_display_name(
             detail=f"Name edit limit reached. You can only edit the display name {MAX_NAME_EDITS} time(s).",
         )
     
-    # Store old name for audit
     old_display_name = certificate.display_name
     new_display_name = data.display_name.strip()
     
-    # If the name is actually changing, update and track
     if old_display_name != new_display_name:
-        # Update the display name
         certificate.display_name = new_display_name
         certificate.edit_count += 1
         
-        # Clear the file path to force regeneration on next download
+        # clear the file path to force regeneration on next download
         if certificate.file_path and os.path.exists(certificate.file_path):
             try:
                 os.remove(certificate.file_path)
@@ -995,7 +885,6 @@ async def update_certificate_display_name(
         certificate.file_path = None
         certificate.generated_at = None
         
-        # Create audit log for name change
         client_ip = get_client_ip(request_obj)
         audit_log = AuditLog(
             participant_id=participant.id,

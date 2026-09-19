@@ -1,8 +1,4 @@
-"""
-Prizes API Routes
-
-Endpoints for viewing and claiming prizes.
-"""
+"""prizes api routes."""
 
 import uuid
 from datetime import datetime
@@ -16,7 +12,6 @@ from app.api.deps import get_client_ip, require_verified_participant
 from app.database import get_session
 from app.models import (
     AuditLog,
-    Event,
     Participant,
     Prize,
     PrizeStatus,
@@ -24,7 +19,7 @@ from app.models import (
     VoucherPool,
     VoucherStatus,
 )
-from app.schemas import BaseResponse, PrizeClaimRequest, PrizeResponse
+from app.schemas import PrizeResponse
 
 router = APIRouter()
 
@@ -34,9 +29,6 @@ async def list_prizes(
     participant: Participant = Depends(require_verified_participant),
     db: AsyncSession = Depends(get_session),
 ):
-    """
-    List all prizes assigned to the current participant.
-    """
     result = await db.execute(
         select(Prize)
         .where(Prize.participant_id == participant.id)
@@ -63,7 +55,6 @@ async def get_prize(
     participant: Participant = Depends(require_verified_participant),
     db: AsyncSession = Depends(get_session),
 ):
-    """Get a specific prize."""
     try:
         prize_uuid = uuid.UUID(prize_id)
     except ValueError:
@@ -103,12 +94,7 @@ async def claim_prize(
     participant: Participant = Depends(require_verified_participant),
     db: AsyncSession = Depends(get_session),
 ):
-    """
-    Claim a prize.
-    
-    For voucher prizes, this reveals the voucher code.
-    For certificate prizes, this triggers certificate generation.
-    """
+    """claim a prize; reveals the voucher code for voucher prizes and triggers generation for certificate prizes."""
     try:
         prize_uuid = uuid.UUID(prize_id)
     except ValueError:
@@ -132,7 +118,6 @@ async def claim_prize(
         )
     
     if prize.status == PrizeStatus.CLAIMED:
-        # Already claimed, just return it
         return PrizeResponse(
             id=prize.id,
             prize_type=prize.prize_type,
@@ -148,7 +133,6 @@ async def claim_prize(
             detail="Prize has expired",
         )
     
-    # Handle voucher prizes
     if prize.prize_type == "voucher":
         voucher_id = prize.prize_data.get("voucher_id")
         if voucher_id:
@@ -162,7 +146,6 @@ async def claim_prize(
                 voucher.claimed_by = participant.id
                 voucher.claimed_at = datetime.utcnow()
                 
-                # Update pool count
                 result = await db.execute(
                     select(VoucherPool).where(VoucherPool.id == voucher.pool_id)
                 )
@@ -170,13 +153,11 @@ async def claim_prize(
                 if pool:
                     pool.claimed_count += 1
     
-    # Mark prize as claimed
     prize.status = PrizeStatus.CLAIMED
     prize.claimed_at = datetime.utcnow()
     
     await db.flush()
     
-    # Log claim
     audit_log = AuditLog(
         action="prize.claim",
         participant_id=participant.id,
@@ -200,13 +181,8 @@ async def claim_prize(
 
 
 def _filter_prize_data(prize: Prize) -> dict:
-    """
-    Filter prize data for unclaimed prizes.
-    
-    Hides sensitive info like voucher codes until claimed.
-    """
+    """filter prize data for unclaimed prizes, hiding sensitive info like voucher codes until claimed."""
     if prize.status != PrizeStatus.CLAIMED:
-        # Hide sensitive data
         data = dict(prize.prize_data)
         
         if "code" in data:
@@ -218,5 +194,4 @@ def _filter_prize_data(prize: Prize) -> dict:
 
 
 def _get_full_prize_data(prize: Prize) -> dict:
-    """Get full prize data for claimed prizes."""
     return dict(prize.prize_data)

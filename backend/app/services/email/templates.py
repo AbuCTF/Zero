@@ -1,8 +1,4 @@
-"""
-Email Template Renderer
-
-Renders email templates with Jinja2.
-"""
+"""renders email templates with jinja2."""
 
 from typing import Any, Dict, Optional
 
@@ -10,27 +6,15 @@ from jinja2 import BaseLoader, Environment, TemplateError, TemplateSyntaxError
 
 
 class DatabaseLoader(BaseLoader):
-    """
-    Jinja2 loader that loads templates from database.
-    
-    Templates are passed directly, not loaded from filesystem.
-    """
+    """jinja2 loader; templates are passed directly, not loaded from filesystem."""
     
     def get_source(self, environment, template):
-        # Not used - we render directly from string
+        # not used - we render directly from string
         raise TemplateError("Direct string rendering only")
 
 
 class EmailTemplateRenderer:
-    """
-    Renders email templates with Jinja2.
-    
-    Features:
-    - Variable substitution
-    - Default filters (date formatting, etc.)
-    - HTML escaping by default
-    - Safe rendering (graceful error handling)
-    """
+    """renders email templates with jinja2 (autoescape on)."""
     
     def __init__(self):
         self.env = Environment(
@@ -40,7 +24,6 @@ class EmailTemplateRenderer:
             lstrip_blocks=True,
         )
         
-        # Add custom filters
         self.env.filters["dateformat"] = self._dateformat
         self.env.filters["default"] = self._default
     
@@ -50,22 +33,10 @@ class EmailTemplateRenderer:
         variables: Dict[str, Any],
         template_text: Optional[str] = None,
     ) -> tuple[str, Optional[str]]:
-        """
-        Render email template.
-        
-        Args:
-            template_html: HTML template content
-            variables: Variables to substitute
-            template_text: Optional plain text template
-            
-        Returns:
-            Tuple of (rendered_html, rendered_text)
-        """
-        # Render HTML
+        """returns (rendered_html, rendered_text)."""
         html_template = self.env.from_string(template_html)
         rendered_html = html_template.render(**variables)
         
-        # Render text if provided
         rendered_text = None
         if template_text:
             text_template = self.env.from_string(template_text)
@@ -74,17 +45,11 @@ class EmailTemplateRenderer:
         return rendered_html, rendered_text
     
     def render_subject(self, subject: str, variables: Dict[str, Any]) -> str:
-        """Render email subject line."""
         template = self.env.from_string(subject)
         return template.render(**variables)
     
     def validate_template(self, template: str) -> tuple[bool, Optional[str]]:
-        """
-        Validate template syntax.
-        
-        Returns:
-            Tuple of (is_valid, error_message)
-        """
+        """returns (is_valid, error_message)."""
         try:
             self.env.from_string(template)
             return True, None
@@ -94,25 +59,17 @@ class EmailTemplateRenderer:
             return False, str(e)
     
     def extract_variables(self, template: str) -> list[str]:
-        """
-        Extract variable names from template.
-        
-        Note: This is a basic extraction that finds {{ variable }} patterns.
-        It won't catch all Jinja2 expressions but handles common cases.
-        """
+        """extract variable names; basic {{ variable }} matching, won't catch all jinja2 expressions."""
         import re
         
-        # Match {{ variable }} patterns
         pattern = r'\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)'
         matches = re.findall(pattern, template)
         
-        # Remove duplicates and built-in names
         builtins = {'loop', 'self', 'true', 'false', 'none'}
         return list(set(m for m in matches if m.lower() not in builtins))
     
     @staticmethod
     def _dateformat(value, format: str = "%Y-%m-%d") -> str:
-        """Format a datetime value."""
         if value is None:
             return ""
         try:
@@ -122,11 +79,9 @@ class EmailTemplateRenderer:
     
     @staticmethod
     def _default(value, default_value=""):
-        """Return default if value is None or empty."""
         return value if value else default_value
 
 
-# Global renderer instance
 renderer = EmailTemplateRenderer()
 
 
@@ -135,18 +90,12 @@ def render_email(
     variables: Dict[str, Any],
     template_text: Optional[str] = None,
 ) -> tuple[str, Optional[str]]:
-    """Convenience function to render email."""
     return renderer.render(template_html, variables, template_text)
 
 
 def render_subject(subject: str, variables: Dict[str, Any]) -> str:
-    """Convenience function to render subject."""
     return renderer.render_subject(subject, variables)
 
-
-# =============================================================================
-# Default Email Templates
-# =============================================================================
 
 DEFAULT_TEMPLATES = {
     "verification": {
