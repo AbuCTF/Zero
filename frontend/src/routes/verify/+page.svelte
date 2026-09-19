@@ -117,8 +117,8 @@
 <div class="min-h-screen bg-background flex items-center justify-center px-4">
 	<div class="w-full max-w-md">
 		<div class="text-center mb-8">
-			<a href="/" class="text-2xl font-semibold text-foreground">
-				ZeroPool
+			<a href="/" class="inline-block">
+				<img src="/logo.png" alt="ZeroPool" class="mx-auto h-9 w-auto" />
 			</a>
 			<p class="text-sm text-foreground-muted mt-2">
 				{mode === 'email' ? 'Email Verification' : mode === 'certificate' ? 'Certificate Verification' : 'Verification'}
