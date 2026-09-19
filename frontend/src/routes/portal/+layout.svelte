@@ -16,8 +16,15 @@
 
 	const currentPath = $derived($page.url.pathname);
 	const initial = $derived((participant?.name || participant?.email || '?').charAt(0).toUpperCase());
+	const isLoginPage = $derived(currentPath === '/portal/login');
 
-	onMount(checkAuth);
+	onMount(() => {
+		if (isLoginPage) {
+			loading = false;
+			return;
+		}
+		checkAuth();
+	});
 
 	async function checkAuth() {
 		try {
@@ -118,7 +125,9 @@
 	</div>
 {/snippet}
 
-{#if loading}
+{#if isLoginPage}
+	{@render children()}
+{:else if loading}
 	<div class="flex min-h-screen items-center justify-center bg-background">
 		<div class="flex items-center gap-2.5 text-sm text-foreground-muted">
 			<span class="h-4 w-4 animate-spin rounded-full border-2 border-brass/30 border-t-brass"></span>

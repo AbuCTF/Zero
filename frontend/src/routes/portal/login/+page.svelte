@@ -37,8 +37,6 @@
 <svelte:head><title>Sign in · H7CTF Portal</title></svelte:head>
 
 <div class="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-4 py-10">
-	<div class="pointer-events-none absolute left-1/2 top-[-10%] h-[440px] w-[760px] -translate-x-1/2 rounded-full bg-brass/[0.07] blur-[130px]"></div>
-
 	<div class="relative w-full max-w-md">
 		<div class="mb-8 text-center">
 			<a href="/" class="inline-block"><img src="/logo.png" alt="ZeroPool" class="mx-auto h-9 w-auto" /></a>
@@ -47,7 +45,6 @@
 		</div>
 
 		<div class="surface p-6 sm:p-7">
-			<div class="accent-bar"></div>
 
 			{#if sent}
 				<div class="py-2 text-center">

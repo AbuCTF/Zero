@@ -304,24 +304,15 @@
 		@apply text-primary border-primary;
 	}
 
-	/* ===== SURFACES (warm gold-tinted, W26 feel) ===== */
+	/* ===== SURFACES (clean flat cards, W26) ===== */
 	.surface {
-		@apply relative overflow-hidden rounded-2xl border border-border;
-		background:
-			radial-gradient(130% 130% at 100% 0%, hsl(var(--primary) / 0.06), transparent 58%),
-			linear-gradient(180deg, hsl(var(--primary) / 0.02), transparent 44%),
-			hsl(var(--card));
+		@apply relative overflow-hidden rounded-2xl border border-border bg-card;
 	}
 	.surface-plain {
-		@apply relative overflow-hidden rounded-2xl border border-border;
-		background: linear-gradient(180deg, hsl(var(--primary) / 0.015), transparent 44%), hsl(var(--card));
+		@apply relative overflow-hidden rounded-2xl border border-border bg-card;
 	}
 	.surface-link {
 		@apply transition-all duration-200 hover:border-primary/30 hover:shadow-[0_0_0_1px_hsl(var(--primary)_/_0.12)] hover:-translate-y-0.5;
-	}
-	.accent-bar {
-		@apply pointer-events-none absolute inset-x-0 top-0 h-px;
-		background: linear-gradient(90deg, transparent, hsl(var(--primary) / 0.55), transparent);
 	}
 	.chip {
 		@apply inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium;

@@ -42,7 +42,6 @@
 
 	<div class="relative w-full max-w-md text-center">
 		<div class="surface p-8">
-			<div class="accent-bar"></div>
 			{#if loading}
 				<div class="mx-auto flex h-14 w-14 items-center justify-center">
 					<span class="h-9 w-9 animate-spin rounded-full border-2 border-brass/25 border-t-brass"></span>

@@ -87,7 +87,6 @@
 	<div class="fade-in space-y-5">
 		<!-- Hero / command center -->
 		<section class="surface p-6 sm:p-7">
-			<div class="accent-bar"></div>
 			<div class="flex items-center gap-4 sm:gap-5">
 				<div class="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-brass/10 text-xl font-semibold text-brass ring-1 ring-inset ring-brass/20 sm:h-16 sm:w-16">
 					{initial}
@@ -129,7 +128,6 @@
 						{@const badge = statusBadge(ev.status)}
 						{@const cd = countdown(ev.event_start)}
 						<section class="surface surface-link p-6">
-							<div class="accent-bar"></div>
 							<div class="flex flex-wrap items-start justify-between gap-5">
 								<div class="min-w-0 flex-1">
 									<div class="flex flex-wrap items-center gap-2.5">
