@@ -27,11 +27,14 @@ settings = get_settings()
 
 
 class ProvisionRequest(BaseModel):
-    email: EmailStr
+    email: EmailStr | None = None
     email_verified: bool = False
     discord_id: str | None = None
     discord_username: str | None = None
     event_slug: str
+    # login-only model: anvil sends create=false to look up an already-registered,
+    # discord-linked participant (never creating one). create=true is legacy.
+    create: bool = True
 
 
 class ProvisionResponse(BaseModel):
@@ -70,6 +73,39 @@ async def provision_identity(
     if not event:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found")
 
+    if not data.create:
+        # login-only: look up an already-registered, discord-linked participant.
+        # never creates — a miss means "register at 2026.h7tex.com first".
+        if not data.discord_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="discord_id is required for lookup",
+            )
+        result = await db.execute(
+            select(Participant).where(
+                Participant.event_id == event.id,
+                Participant.extra_data["discord_id"].astext == data.discord_id,
+            )
+        )
+        participant = result.scalar_one_or_none()
+        if participant is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No registered participant for this Discord account",
+            )
+        return ProvisionResponse(
+            participant_id=str(participant.id),
+            email=participant.email,
+            username=participant.username or participant.email.split("@")[0],
+            email_verified=participant.email_verified,
+            created=False,
+        )
+
+    if not data.email:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="email is required to provision",
+        )
     email = data.email.lower()
 
     result = await db.execute(
