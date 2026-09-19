@@ -54,7 +54,8 @@ export default {
 			},
 			fontFamily: {
 				sans: [
-					'Inter',
+					'Bricolage Grotesque',
+					'system-ui',
 					'-apple-system',
 					'BlinkMacSystemFont',
 					'Segoe UI',
@@ -63,7 +64,7 @@ export default {
 					'Arial',
 					'sans-serif'
 				],
-				mono: ['JetBrains Mono', 'Fira Code', 'Monaco', 'Consolas', 'monospace']
+				mono: ['IBM Plex Mono', 'ui-monospace', 'SFMono-Regular', 'Menlo', 'Consolas', 'monospace']
 			},
 			fontSize: {
 				xs: ['0.75rem', { lineHeight: '1rem' }],

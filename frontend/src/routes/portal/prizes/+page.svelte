@@ -58,7 +58,7 @@
 <div class="space-y-6">
     <div>
         <h1 class="text-2xl font-semibold">My Prizes</h1>
-        <p class="text-sm text-muted-foreground mt-1">
+        <p class="text-sm text-foreground-muted mt-1">
             View and claim your prizes from events
         </p>
     </div>
@@ -71,17 +71,17 @@
 
     {#if loading}
         <div class="card p-12 text-center">
-            <div class="animate-pulse text-muted-foreground">Loading prizes...</div>
+            <div class="animate-pulse text-foreground-muted">Loading prizes...</div>
         </div>
     {:else if prizes.length === 0}
         <div class="card p-12 text-center">
             <div class="w-16 h-16 mx-auto mb-4 bg-muted rounded-full flex items-center justify-center">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-foreground-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
                 </svg>
             </div>
             <h2 class="text-lg font-medium mb-2">No Prizes Yet</h2>
-            <p class="text-muted-foreground text-sm">
+            <p class="text-foreground-muted text-sm">
                 Prizes will appear here once event results are finalized.
             </p>
         </div>
@@ -99,12 +99,12 @@
                             </div>
                             
                             {#if prize.description}
-                                <p class="text-sm text-muted-foreground mb-3">
+                                <p class="text-sm text-foreground-muted mb-3">
                                     {prize.description}
                                 </p>
                             {/if}
                             
-                            <div class="flex items-center gap-4 text-sm text-muted-foreground">
+                            <div class="flex items-center gap-4 text-sm text-foreground-muted">
                                 <span>Event: {prize.event_name}</span>
                                 {#if prize.rank}
                                     <span>Rank: #{prize.rank}</span>
@@ -133,7 +133,7 @@
                     </div>
 
                     {#if prize.claimed_at}
-                        <div class="mt-4 pt-4 border-t border-border text-xs text-muted-foreground">
+                        <div class="mt-4 pt-4 border-t border-border text-xs text-foreground-muted">
                             Claimed on {formatDate(prize.claimed_at)}
                         </div>
                     {/if}
@@ -158,7 +158,7 @@
             
             <div class="p-6">
                 <div class="text-center mb-4">
-                    <div class="text-sm text-muted-foreground mb-2">{showVoucher.name}</div>
+                    <div class="text-sm text-foreground-muted mb-2">{showVoucher.name}</div>
                 </div>
                 
                 <div class="bg-muted rounded-lg p-4 text-center mb-4">
@@ -177,7 +177,7 @@
                 {#if showVoucher.voucher_instructions}
                     <div class="mt-4 p-3 bg-muted/50 rounded-lg">
                         <div class="text-xs font-medium mb-1">Redemption Instructions:</div>
-                        <div class="text-sm text-muted-foreground">
+                        <div class="text-sm text-foreground-muted">
                             {showVoucher.voucher_instructions}
                         </div>
                     </div>

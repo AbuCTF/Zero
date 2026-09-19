@@ -165,7 +165,7 @@
         <div class="flex items-center justify-between">
         <div>
             <h1 class="text-2xl font-semibold">Email Campaigns</h1>
-            <p class="text-sm text-muted-foreground mt-1">
+            <p class="text-sm text-foreground-muted mt-1">
                 Send bulk emails to event participants
             </p>
         </div>
@@ -182,11 +182,11 @@
 
     {#if loading}
         <div class="card p-12 text-center">
-            <div class="animate-pulse text-muted-foreground">Loading campaigns...</div>
+            <div class="animate-pulse text-foreground-muted">Loading campaigns...</div>
         </div>
     {:else if campaigns.length === 0}
         <div class="card p-12 text-center">
-            <div class="text-muted-foreground mb-4">No email campaigns yet</div>
+            <div class="text-foreground-muted mb-4">No email campaigns yet</div>
             <button onclick={openAddModal} class="btn btn-primary">
                 Create Your First Campaign
             </button>
@@ -203,7 +203,7 @@
                                     {campaign.status}
                                 </span>
                             </div>
-                            <div class="text-sm text-muted-foreground mt-1 space-x-4">
+                            <div class="text-sm text-foreground-muted mt-1 space-x-4">
                                 <span>Event: {getEventName(campaign.event_id)}</span>
                                 <span>Subject: {campaign.subject}</span>
                             </div>
@@ -247,7 +247,7 @@
                     {#if campaign.status === 'sending' || campaign.status === 'paused' || campaign.status === 'sent'}
                         <div class="space-y-2">
                             <div class="flex justify-between text-sm">
-                                <span class="text-muted-foreground">Progress</span>
+                                <span class="text-foreground-muted">Progress</span>
                                 <span>
                                     {formatNumber(campaign.sent_count || 0)} / {formatNumber(campaign.total_recipients || 0)} sent
                                 </span>
@@ -258,7 +258,7 @@
                                     style="width: {getProgress(campaign)}%"
                                 ></div>
                             </div>
-                            <div class="flex justify-between text-xs text-muted-foreground">
+                            <div class="flex justify-between text-xs text-foreground-muted">
                                 <span>
                                     {formatNumber(campaign.failed_count || 0)} failed
                                 </span>
@@ -266,13 +266,13 @@
                             </div>
                         </div>
                     {:else if campaign.scheduled_at}
-                        <div class="text-sm text-muted-foreground">
+                        <div class="text-sm text-foreground-muted">
                             Scheduled for: {formatDate(campaign.scheduled_at)}
                         </div>
                     {/if}
 
                     {#if campaign.started_at || campaign.completed_at}
-                        <div class="flex gap-4 mt-4 pt-4 border-t border-border text-xs text-muted-foreground">
+                        <div class="flex gap-4 mt-4 pt-4 border-t border-border text-xs text-foreground-muted">
                             {#if campaign.started_at}
                                 <span>Started: {formatDate(campaign.started_at)}</span>
                             {/if}
@@ -359,7 +359,7 @@
                         bind:value={form.scheduled_at}
                         class="input"
                     />
-                    <p class="text-xs text-muted-foreground mt-1">
+                    <p class="text-xs text-foreground-muted mt-1">
                         Leave empty to send immediately when started
                     </p>
                 </div>

@@ -690,11 +690,11 @@
 <div class="p-6 lg:p-8">
 {#if loading}
     <div class="p-12 text-center">
-        <div class="animate-pulse text-muted-foreground">Loading event...</div>
+        <div class="animate-pulse text-foreground-muted">Loading event...</div>
     </div>
 {:else if !event}
     <div class="p-12 text-center">
-        <div class="text-muted-foreground mb-4">Event not found</div>
+        <div class="text-foreground-muted mb-4">Event not found</div>
         <a href="/admin/events" class="btn btn-primary">Back to Events</a>
     </div>
 {:else}
@@ -703,7 +703,7 @@
         <div class="flex items-start justify-between">
             <div>
                 <div class="flex items-center gap-3 mb-1">
-                    <a href="/admin/events" class="text-muted-foreground hover:text-foreground transition-colors">
+                    <a href="/admin/events" class="text-foreground-muted hover:text-foreground transition-colors">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
                         </svg>
@@ -713,7 +713,7 @@
                         {event.status}
                     </span>
                 </div>
-                <p class="text-sm text-muted-foreground">
+                <p class="text-sm text-foreground-muted">
                     {event.slug} | {formatNumber(totalParticipants)} participants
                 </p>
             </div>
@@ -770,7 +770,7 @@
                     </div>
                     <button 
                         onclick={() => provisionResult = null}
-                        class="text-muted-foreground hover:text-foreground"
+                        class="text-foreground-muted hover:text-foreground"
                     >
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -785,25 +785,25 @@
             <nav class="flex gap-6">
                 <button 
                     onclick={() => activeTab = 'overview'}
-                    class="py-3 text-sm font-medium border-b-2 transition-colors {activeTab === 'overview' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}"
+                    class="py-3 text-sm font-medium border-b-2 transition-colors {activeTab === 'overview' ? 'border-primary text-foreground' : 'border-transparent text-foreground-muted hover:text-foreground'}"
                 >
                     Overview
                 </button>
                 <button 
                     onclick={() => activeTab = 'participants'}
-                    class="py-3 text-sm font-medium border-b-2 transition-colors {activeTab === 'participants' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}"
+                    class="py-3 text-sm font-medium border-b-2 transition-colors {activeTab === 'participants' ? 'border-primary text-foreground' : 'border-transparent text-foreground-muted hover:text-foreground'}"
                 >
                     Participants ({formatNumber(totalParticipants)})
                 </button>
                 <button 
                     onclick={() => activeTab = 'prizes'}
-                    class="py-3 text-sm font-medium border-b-2 transition-colors {activeTab === 'prizes' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}"
+                    class="py-3 text-sm font-medium border-b-2 transition-colors {activeTab === 'prizes' ? 'border-primary text-foreground' : 'border-transparent text-foreground-muted hover:text-foreground'}"
                 >
                     Rewards
                 </button>
                 <button 
                     onclick={() => activeTab = 'settings'}
-                    class="py-3 text-sm font-medium border-b-2 transition-colors {activeTab === 'settings' ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}"
+                    class="py-3 text-sm font-medium border-b-2 transition-colors {activeTab === 'settings' ? 'border-primary text-foreground' : 'border-transparent text-foreground-muted hover:text-foreground'}"
                 >
                     Settings
                 </button>
@@ -816,10 +816,10 @@
                 <div class="card p-4 group hover:border-border-hover transition-colors">
                     <div class="flex items-center justify-between">
                         <div>
-                            <div class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Participants</div>
+                            <div class="text-xs font-medium text-foreground-muted uppercase tracking-wide">Participants</div>
                             <div class="text-2xl font-semibold mt-1 tracking-tight">{formatNumber(totalParticipants)}</div>
                         </div>
-                        <div class="w-10 h-10 rounded-lg bg-accent/50 flex items-center justify-center text-muted-foreground group-hover:bg-accent transition-colors">
+                        <div class="w-10 h-10 rounded-lg bg-accent/50 flex items-center justify-center text-foreground-muted group-hover:bg-accent transition-colors">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                         </div>
                     </div>
@@ -827,7 +827,7 @@
                 <div class="card p-4 group hover:border-border-hover transition-colors">
                     <div class="flex items-center justify-between">
                         <div>
-                            <div class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Verified</div>
+                            <div class="text-xs font-medium text-foreground-muted uppercase tracking-wide">Verified</div>
                             <div class="text-2xl font-semibold mt-1 tracking-tight">
                                 {formatNumber(event?.verified_count || 0)}
                             </div>
@@ -840,12 +840,12 @@
                 <div class="card p-4 group hover:border-border-hover transition-colors">
                     <div class="flex items-center justify-between">
                         <div>
-                            <div class="text-xs font-medium text-muted-foreground uppercase tracking-wide">Teams</div>
+                            <div class="text-xs font-medium text-foreground-muted uppercase tracking-wide">Teams</div>
                             <div class="text-2xl font-semibold mt-1 tracking-tight">
                                 {formatNumber(eventStats?.team_count ?? 0)}
                             </div>
                         </div>
-                        <div class="w-10 h-10 rounded-lg bg-accent/50 flex items-center justify-center text-muted-foreground group-hover:bg-accent transition-colors">
+                        <div class="w-10 h-10 rounded-lg bg-accent/50 flex items-center justify-center text-foreground-muted group-hover:bg-accent transition-colors">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" /></svg>
                         </div>
                     </div>
@@ -853,12 +853,12 @@
                 <div class="card p-4 group hover:border-border-hover transition-colors">
                     <div class="flex items-center justify-between">
                         <div>
-                            <div class="text-xs font-medium text-muted-foreground uppercase tracking-wide">With Results</div>
+                            <div class="text-xs font-medium text-foreground-muted uppercase tracking-wide">With Results</div>
                             <div class="text-2xl font-semibold mt-1 tracking-tight">
                                 {formatNumber(event?.with_results_count ?? eventStats?.with_results_count ?? participants.filter(p => p.final_rank).length)}
                             </div>
                         </div>
-                        <div class="w-10 h-10 rounded-lg bg-accent/50 flex items-center justify-center text-muted-foreground group-hover:bg-accent transition-colors">
+                        <div class="w-10 h-10 rounded-lg bg-accent/50 flex items-center justify-center text-foreground-muted group-hover:bg-accent transition-colors">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
                         </div>
                     </div>
@@ -868,24 +868,24 @@
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div class="card">
                     <h3 class="font-medium mb-4 flex items-center gap-2">
-                        <svg class="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                        <svg class="w-4 h-4 text-foreground-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
                         Event Timeline
                     </h3>
                     <div class="space-y-3 text-sm">
                         <div class="flex justify-between items-center py-2 border-b border-border/50">
-                            <span class="text-muted-foreground">Registration Opens</span>
+                            <span class="text-foreground-muted">Registration Opens</span>
                             <span class="font-medium">{event.registration_start ? formatDate(event.registration_start) : '—'}</span>
                         </div>
                         <div class="flex justify-between items-center py-2 border-b border-border/50">
-                            <span class="text-muted-foreground">Registration Closes</span>
+                            <span class="text-foreground-muted">Registration Closes</span>
                             <span class="font-medium">{event.registration_end ? formatDate(event.registration_end) : '—'}</span>
                         </div>
                         <div class="flex justify-between items-center py-2 border-b border-border/50">
-                            <span class="text-muted-foreground">Event Starts</span>
+                            <span class="text-foreground-muted">Event Starts</span>
                             <span class="font-medium">{event.event_start ? formatDate(event.event_start) : '—'}</span>
                         </div>
                         <div class="flex justify-between items-center py-2">
-                            <span class="text-muted-foreground">Event Ends</span>
+                            <span class="text-foreground-muted">Event Ends</span>
                             <span class="font-medium">{event.event_end ? formatDate(event.event_end) : '—'}</span>
                         </div>
                     </div>
@@ -893,26 +893,26 @@
 
                 <div class="card">
                     <h3 class="font-medium mb-4 flex items-center gap-2">
-                        <svg class="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
+                        <svg class="w-4 h-4 text-foreground-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" /></svg>
                         CTFd Integration
                     </h3>
                     {#if event.ctfd_url}
                         <div class="space-y-3 text-sm">
                             <div class="flex justify-between items-center py-2 border-b border-border/50">
-                                <span class="text-muted-foreground">Platform URL</span>
+                                <span class="text-foreground-muted">Platform URL</span>
                                 <a href={event.ctfd_url} target="_blank" class="text-foreground hover:text-primary transition-colors font-medium truncate max-w-[200px]">
                                     {event.ctfd_url.replace(/^https?:\/\//, '')}
                                 </a>
                             </div>
                             <div class="flex justify-between items-center py-2">
-                                <span class="text-muted-foreground">Last Sync</span>
+                                <span class="text-foreground-muted">Last Sync</span>
                                 <span class="font-medium">{event.ctfd_synced_at ? formatDate(event.ctfd_synced_at) : 'Never'}</span>
                             </div>
                         </div>
                     {:else}
                         <div class="flex items-center gap-3 p-4 bg-accent/30 rounded-lg">
-                            <svg class="w-5 h-5 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                            <p class="text-sm text-muted-foreground">
+                            <svg class="w-5 h-5 text-foreground-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                            <p class="text-sm text-foreground-muted">
                                 No CTFd instance configured. Set it up in Settings.
                             </p>
                         </div>
@@ -922,7 +922,7 @@
 
         {:else if activeTab === 'participants'}
             <div class="flex items-center justify-between mb-4">
-                <div class="text-sm text-muted-foreground">
+                <div class="text-sm text-foreground-muted">
                     Showing {participants.length} of {formatNumber(totalParticipants)} participant{totalParticipants !== 1 ? 's' : ''}
                 </div>
                 <div class="flex gap-2">
@@ -944,7 +944,7 @@
             <!-- Search / filter / resend controls -->
             <div class="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
                 <div class="relative flex-1">
-                    <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                    <svg class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-foreground-muted pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
                     <input
                         type="text"
                         bind:value={participantSearch}
@@ -974,7 +974,7 @@
                     <p class="font-medium">
                         {resendResult.message || `Queued ${formatNumber(resendResult.queued_count)} verification email${resendResult.queued_count !== 1 ? 's' : ''}.`}
                     </p>
-                    <button onclick={() => resendResult = null} class="text-muted-foreground hover:text-foreground">
+                    <button onclick={() => resendResult = null} class="text-foreground-muted hover:text-foreground">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
                     </button>
                 </div>
@@ -995,14 +995,14 @@
             {#if participants.length === 0}
                 <div class="card p-12 text-center">
                     <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-accent/50 flex items-center justify-center">
-                        <svg class="w-8 h-8 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                        <svg class="w-8 h-8 text-foreground-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                     </div>
                     {#if participantSearch || participantFilter !== 'all'}
                         <div class="text-foreground font-medium mb-1">No matching participants</div>
-                        <p class="text-sm text-muted-foreground mb-4">Try adjusting your search or filter</p>
+                        <p class="text-sm text-foreground-muted mb-4">Try adjusting your search or filter</p>
                     {:else}
                         <div class="text-foreground font-medium mb-1">No participants yet</div>
-                        <p class="text-sm text-muted-foreground mb-4">Import a list of participants to get started</p>
+                        <p class="text-sm text-foreground-muted mb-4">Import a list of participants to get started</p>
                         <button onclick={() => showImportModal = true} class="btn btn-primary">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
                             Import Participants
@@ -1024,31 +1024,31 @@
                                         aria-label="Select all participants on this page"
                                     />
                                 </th>
-                                <th class="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">
+                                <th class="text-left text-xs font-medium text-foreground-muted uppercase tracking-wide px-4 py-3">
                                     Name
                                 </th>
-                                <th class="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">
+                                <th class="text-left text-xs font-medium text-foreground-muted uppercase tracking-wide px-4 py-3">
                                     Email
                                 </th>
-                                <th class="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">
+                                <th class="text-left text-xs font-medium text-foreground-muted uppercase tracking-wide px-4 py-3">
                                     Team
                                 </th>
-                                <th class="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">
+                                <th class="text-left text-xs font-medium text-foreground-muted uppercase tracking-wide px-4 py-3">
                                     Country
                                 </th>
-                                <th class="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">
+                                <th class="text-left text-xs font-medium text-foreground-muted uppercase tracking-wide px-4 py-3">
                                     Rank
                                 </th>
-                                <th class="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">
+                                <th class="text-left text-xs font-medium text-foreground-muted uppercase tracking-wide px-4 py-3">
                                     Registered
                                 </th>
-                                <th class="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">
+                                <th class="text-left text-xs font-medium text-foreground-muted uppercase tracking-wide px-4 py-3">
                                     Status
                                 </th>
-                                <th class="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">
+                                <th class="text-left text-xs font-medium text-foreground-muted uppercase tracking-wide px-4 py-3">
                                     Verified
                                 </th>
-                                <th class="text-right text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">
+                                <th class="text-right text-xs font-medium text-foreground-muted uppercase tracking-wide px-4 py-3">
                                     Actions
                                 </th>
                             </tr>
@@ -1068,7 +1068,7 @@
                                     <td class="px-4 py-3">
                                         <div class="font-medium">{participant.name}</div>
                                     </td>
-                                    <td class="px-4 py-3 text-sm text-muted-foreground">
+                                    <td class="px-4 py-3 text-sm text-foreground-muted">
                                         {participant.email}
                                     </td>
                                     <td class="px-4 py-3 text-sm">
@@ -1080,7 +1080,7 @@
                                     <td class="px-4 py-3 text-sm">
                                         {participant.final_rank || '-'}
                                     </td>
-                                    <td class="px-4 py-3 text-sm text-muted-foreground whitespace-nowrap">
+                                    <td class="px-4 py-3 text-sm text-foreground-muted whitespace-nowrap">
                                         {participant.created_at ? formatDate(participant.created_at) : '-'}
                                     </td>
                                     <td class="px-4 py-3">
@@ -1090,7 +1090,7 @@
                                             <span class="badge badge-secondary">Unverified</span>
                                         {/if}
                                     </td>
-                                    <td class="px-4 py-3 text-sm text-muted-foreground whitespace-nowrap">
+                                    <td class="px-4 py-3 text-sm text-foreground-muted whitespace-nowrap">
                                         {participant.email_verified_at ? formatDate(participant.email_verified_at) : '-'}
                                     </td>
                                     <td class="px-4 py-3 text-right">
@@ -1122,7 +1122,7 @@
                 <!-- Pagination -->
                 {#if totalPages > 1}
                     <div class="flex items-center justify-between mt-4">
-                        <div class="text-sm text-muted-foreground">
+                        <div class="text-sm text-foreground-muted">
                             Page {currentPage} of {totalPages}
                         </div>
                         <div class="flex items-center gap-2">
@@ -1182,7 +1182,7 @@
                     <div class="flex items-center justify-between mb-4">
                         <div>
                             <h3 class="font-medium">Prize Rules</h3>
-                            <p class="text-sm text-muted-foreground">Define which ranks get which certificates and prizes</p>
+                            <p class="text-sm text-foreground-muted">Define which ranks get which certificates and prizes</p>
                         </div>
                         <button onclick={() => showPrizeRuleModal = true} class="btn btn-primary gap-2">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>
@@ -1191,12 +1191,12 @@
                     </div>
 
                     {#if loadingPrizes}
-                        <div class="p-8 text-center text-muted-foreground">Loading...</div>
+                        <div class="p-8 text-center text-foreground-muted">Loading...</div>
                     {:else if prizeRules.length === 0}
                         <div class="p-8 text-center border-2 border-dashed border-border rounded-lg">
-                            <svg class="w-12 h-12 mx-auto text-muted-foreground/50 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" /></svg>
-                            <p class="text-muted-foreground mb-2">No prize rules defined</p>
-                            <p class="text-sm text-muted-foreground">Create rules to automatically assign certificates and prizes based on rank</p>
+                            <svg class="w-12 h-12 mx-auto text-foreground-muted/50 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" /></svg>
+                            <p class="text-foreground-muted mb-2">No prize rules defined</p>
+                            <p class="text-sm text-foreground-muted">Create rules to automatically assign certificates and prizes based on rank</p>
                         </div>
                     {:else}
                         <div class="space-y-3">
@@ -1208,7 +1208,7 @@
                                         </div>
                                         <div>
                                             <div class="font-medium">{rule.name}</div>
-                                            <div class="text-sm text-muted-foreground">
+                                            <div class="text-sm text-foreground-muted">
                                                 {#if rule.certificate_template_id}
                                                     Certificate: {certTemplates.find(t => t.id === rule.certificate_template_id)?.name || 'Custom'}
                                                 {/if}
@@ -1235,7 +1235,7 @@
                     <div class="flex items-center justify-between mb-4">
                         <div>
                             <h3 class="font-medium">Voucher Pools</h3>
-                            <p class="text-sm text-muted-foreground">Upload reusable voucher codes that prize rules can grant to winners</p>
+                            <p class="text-sm text-foreground-muted">Upload reusable voucher codes that prize rules can grant to winners</p>
                         </div>
                         <button onclick={() => showPoolModal = true} class="btn btn-primary gap-2">
                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>
@@ -1244,12 +1244,12 @@
                     </div>
 
                     {#if loadingVoucherPools}
-                        <div class="p-8 text-center text-muted-foreground">Loading...</div>
+                        <div class="p-8 text-center text-foreground-muted">Loading...</div>
                     {:else if voucherPools.length === 0}
                         <div class="p-8 text-center border-2 border-dashed border-border rounded-lg">
-                            <svg class="w-12 h-12 mx-auto text-muted-foreground/50 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" /></svg>
-                            <p class="text-muted-foreground mb-2">No voucher pools yet</p>
-                            <p class="text-sm text-muted-foreground">Create a pool, then upload voucher codes via CSV</p>
+                            <svg class="w-12 h-12 mx-auto text-foreground-muted/50 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z" /></svg>
+                            <p class="text-foreground-muted mb-2">No voucher pools yet</p>
+                            <p class="text-sm text-foreground-muted">Create a pool, then upload voucher codes via CSV</p>
                         </div>
                     {:else}
                         <div class="space-y-3">
@@ -1261,7 +1261,7 @@
                                         </div>
                                         <div class="min-w-0">
                                             <div class="font-medium truncate">{pool.name}</div>
-                                            <div class="text-sm text-muted-foreground">
+                                            <div class="text-sm text-foreground-muted">
                                                 {pool.claimed_count} / {pool.total_count} claimed
                                                 {#if pool.platform} · {pool.platform}{/if}
                                             </div>
@@ -1287,7 +1287,7 @@
                 <div class="card p-6">
                     <div class="mb-4">
                         <h3 class="font-medium">Manual Prize Assignment</h3>
-                        <p class="text-sm text-muted-foreground">Search for participants to assign prizes manually</p>
+                        <p class="text-sm text-foreground-muted">Search for participants to assign prizes manually</p>
                     </div>
 
                     <!-- Search Box -->
@@ -1318,10 +1318,10 @@
                             <table class="w-full">
                                 <thead class="bg-muted/50">
                                     <tr>
-                                        <th class="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Participant</th>
-                                        <th class="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Rank</th>
-                                        <th class="text-left text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Assigned Prizes</th>
-                                        <th class="text-right text-xs font-medium text-muted-foreground uppercase tracking-wide px-4 py-3">Actions</th>
+                                        <th class="text-left text-xs font-medium text-foreground-muted uppercase tracking-wide px-4 py-3">Participant</th>
+                                        <th class="text-left text-xs font-medium text-foreground-muted uppercase tracking-wide px-4 py-3">Rank</th>
+                                        <th class="text-left text-xs font-medium text-foreground-muted uppercase tracking-wide px-4 py-3">Assigned Prizes</th>
+                                        <th class="text-right text-xs font-medium text-foreground-muted uppercase tracking-wide px-4 py-3">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y divide-border">
@@ -1329,16 +1329,16 @@
                                         <tr class="hover:bg-muted/30">
                                             <td class="px-4 py-3">
                                                 <div class="font-medium">{participant.name || participant.username}</div>
-                                                <div class="text-xs text-muted-foreground">{participant.email}</div>
+                                                <div class="text-xs text-foreground-muted">{participant.email}</div>
                                             </td>
                                             <td class="px-4 py-3">
                                                 {#if participant.final_rank}
                                                     <span class="badge badge-primary">#{participant.final_rank}</span>
                                                 {:else}
-                                                    <span class="text-muted-foreground">-</span>
+                                                    <span class="text-foreground-muted">-</span>
                                                 {/if}
                                             </td>
-                                            <td class="px-4 py-3 text-sm text-muted-foreground">
+                                            <td class="px-4 py-3 text-sm text-foreground-muted">
                                                 —
                                             </td>
                                             <td class="px-4 py-3 text-right">
@@ -1351,11 +1351,11 @@
                                 </tbody>
                             </table>
                         </div>
-                        <p class="text-sm text-muted-foreground mt-2">Found {prizeSearchResults.length} participant(s)</p>
+                        <p class="text-sm text-foreground-muted mt-2">Found {prizeSearchResults.length} participant(s)</p>
                     {:else if prizeSearchQuery && !searchingPrize}
-                        <p class="text-muted-foreground text-sm text-center py-8">No results. Try searching for a participant.</p>
+                        <p class="text-foreground-muted text-sm text-center py-8">No results. Try searching for a participant.</p>
                     {:else}
-                        <p class="text-muted-foreground text-sm text-center py-8">Enter a search term to find participants</p>
+                        <p class="text-foreground-muted text-sm text-center py-8">Enter a search term to find participants</p>
                     {/if}
                 </div>
             </div>
@@ -1442,7 +1442,7 @@
                     <div>
                         <label for="ctfd-key" class="block text-sm font-medium mb-1.5">CTFd API Key</label>
                         <input type="password" id="ctfd-key" bind:value={editForm.ctfd_api_key} class="input" placeholder="ctfd_xxx..." />
-                        <p class="text-xs text-muted-foreground mt-1">
+                        <p class="text-xs text-foreground-muted mt-1">
                             Generate from CTFd Admin > Config > Access Tokens
                         </p>
                     </div>
@@ -1450,7 +1450,7 @@
 
                 <div class="card p-6 space-y-4">
                     <h3 class="font-medium">Post-Registration Links</h3>
-                    <p class="text-sm text-muted-foreground mb-2">These links are shown to participants after they verify their email</p>
+                    <p class="text-sm text-foreground-muted mb-2">These links are shown to participants after they verify their email</p>
                     
                     <div>
                         <label for="discord-url" class="block text-sm font-medium mb-1.5">Discord Invite URL</label>
@@ -1492,15 +1492,15 @@
                         <div class="grid grid-cols-3 gap-3">
                             <div class="bg-accent/50 rounded-lg p-3 text-center">
                                 <div class="text-2xl font-semibold text-foreground">{importResult.imported || 0}</div>
-                                <div class="text-xs text-muted-foreground">New</div>
+                                <div class="text-xs text-foreground-muted">New</div>
                             </div>
                             <div class="bg-primary/10 rounded-lg p-3 text-center">
                                 <div class="text-2xl font-semibold text-primary">{importResult.updated || 0}</div>
-                                <div class="text-xs text-muted-foreground">Updated</div>
+                                <div class="text-xs text-foreground-muted">Updated</div>
                             </div>
                             <div class="bg-muted/50 rounded-lg p-3 text-center">
-                                <div class="text-2xl font-semibold text-muted-foreground">{importResult.skipped || 0}</div>
-                                <div class="text-xs text-muted-foreground">Skipped</div>
+                                <div class="text-2xl font-semibold text-foreground-muted">{importResult.skipped || 0}</div>
+                                <div class="text-xs text-foreground-muted">Skipped</div>
                             </div>
                         </div>
                         {#if importResult.errors && importResult.errors.length > 0}
@@ -1511,7 +1511,7 @@
                                         <li>Row {err.row}: {err.error}</li>
                                     {/each}
                                     {#if importResult.errors.length > 5}
-                                        <li class="text-muted-foreground">...and {importResult.errors.length - 5} more</li>
+                                        <li class="text-foreground-muted">...and {importResult.errors.length - 5} more</li>
                                     {/if}
                                 </ul>
                             </div>
@@ -1527,14 +1527,14 @@
                                 <div class="w-full bg-muted rounded-full h-2">
                                     <div class="bg-primary h-2 rounded-full transition-all duration-300" style="width: {importProgress.progress}%"></div>
                                 </div>
-                                <p class="text-xs text-muted-foreground">
+                                <p class="text-xs text-foreground-muted">
                                     {Math.round(importProgress.progress)}% complete ({importProgress.imported + importProgress.updated + importProgress.skipped} / {importProgress.total})
                                 </p>
                             </div>
                         {:else if importFile}
-                            <p class="text-xs text-muted-foreground mt-1">Processing {importFile.name}</p>
+                            <p class="text-xs text-foreground-muted mt-1">Processing {importFile.name}</p>
                         {/if}
-                        <p class="text-xs text-muted-foreground mt-3">
+                        <p class="text-xs text-foreground-muted mt-3">
                             {importProgress ? 'Processing in background...' : 'This may take a moment for large files'}
                         </p>
                     </div>
@@ -1547,14 +1547,14 @@
                                 onchange={(e) => importFile = e.currentTarget.files?.[0] || null}
                                 class="sr-only"
                             />
-                            <svg class="w-8 h-8 mx-auto text-muted-foreground mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg class="w-8 h-8 mx-auto text-foreground-muted mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                             </svg>
                             {#if importFile}
                                 <p class="text-sm font-medium text-foreground">{importFile.name}</p>
-                                <p class="text-xs text-muted-foreground mt-1">{(importFile.size / 1024).toFixed(1)} KB</p>
+                                <p class="text-xs text-foreground-muted mt-1">{(importFile.size / 1024).toFixed(1)} KB</p>
                             {:else}
-                                <p class="text-sm text-muted-foreground">Click to select a file</p>
+                                <p class="text-sm text-foreground-muted">Click to select a file</p>
                             {/if}
                         </label>
                         
@@ -1566,17 +1566,17 @@
                                 class="rounded border-border"
                             />
                             <span class="text-sm">Update existing participants</span>
-                            <span class="text-xs text-muted-foreground">(rank, score, name)</span>
+                            <span class="text-xs text-foreground-muted">(rank, score, name)</span>
                         </label>
                         
-                        <div class="text-xs text-muted-foreground space-y-1">
+                        <div class="text-xs text-foreground-muted space-y-1">
                             <p class="font-medium">Supported formats:</p>
-                            <ul class="list-disc list-inside text-muted-foreground/80 space-y-0.5">
+                            <ul class="list-disc list-inside text-foreground-muted/80 space-y-0.5">
                                 <li><code class="font-mono text-foreground/70">.txt</code> — One email per line</li>
                                 <li><code class="font-mono text-foreground/70">.csv</code> — email required; username, name, rank, score optional</li>
                                 <li><code class="font-mono text-foreground/70">.json</code> — Array of participant objects</li>
                             </ul>
-                            <p class="mt-2 text-muted-foreground/70">
+                            <p class="mt-2 text-foreground-muted/70">
                                 Batch imports add new participants. Column order doesn't matter.
                             </p>
                         </div>
@@ -1608,7 +1608,7 @@
         <div class="card w-full max-w-md">
             <div class="p-6 border-b border-border">
                 <h2 class="text-lg font-semibold">Import Results</h2>
-                <p class="text-sm text-muted-foreground">Update participant scores and ranks from CSV</p>
+                <p class="text-sm text-foreground-muted">Update participant scores and ranks from CSV</p>
             </div>
             
             <div class="p-6">
@@ -1625,15 +1625,15 @@
                         <div class="grid grid-cols-3 gap-3">
                             <div class="bg-success/10 rounded-lg p-3 text-center">
                                 <div class="text-2xl font-semibold text-success">{resultsImportResult.updated || 0}</div>
-                                <div class="text-xs text-muted-foreground">Updated</div>
+                                <div class="text-xs text-foreground-muted">Updated</div>
                             </div>
                             <div class="bg-warning/10 rounded-lg p-3 text-center">
                                 <div class="text-2xl font-semibold text-warning">{resultsImportResult.not_found || 0}</div>
-                                <div class="text-xs text-muted-foreground">Not Found</div>
+                                <div class="text-xs text-foreground-muted">Not Found</div>
                             </div>
                             <div class="bg-muted/50 rounded-lg p-3 text-center">
-                                <div class="text-2xl font-semibold text-muted-foreground">{resultsImportResult.skipped || 0}</div>
-                                <div class="text-xs text-muted-foreground">Skipped</div>
+                                <div class="text-2xl font-semibold text-foreground-muted">{resultsImportResult.skipped || 0}</div>
+                                <div class="text-xs text-foreground-muted">Skipped</div>
                             </div>
                         </div>
                         {#if resultsImportResult.errors && resultsImportResult.errors.length > 0}
@@ -1644,7 +1644,7 @@
                                         <li>Row {err.row}: {err.error}</li>
                                     {/each}
                                     {#if resultsImportResult.errors.length > 5}
-                                        <li class="text-muted-foreground">...and {resultsImportResult.errors.length - 5} more</li>
+                                        <li class="text-foreground-muted">...and {resultsImportResult.errors.length - 5} more</li>
                                     {/if}
                                 </ul>
                             </div>
@@ -1664,14 +1664,14 @@
                                 onchange={(e) => resultsFile = e.currentTarget.files?.[0] || null}
                                 class="sr-only"
                             />
-                            <svg class="w-8 h-8 mx-auto text-muted-foreground mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg class="w-8 h-8 mx-auto text-foreground-muted mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                             </svg>
                             {#if resultsFile}
                                 <p class="text-sm font-medium text-foreground">{resultsFile.name}</p>
-                                <p class="text-xs text-muted-foreground mt-1">{(resultsFile.size / 1024).toFixed(1)} KB</p>
+                                <p class="text-xs text-foreground-muted mt-1">{(resultsFile.size / 1024).toFixed(1)} KB</p>
                             {:else}
-                                <p class="text-sm text-muted-foreground">Select a CSV file</p>
+                                <p class="text-sm text-foreground-muted">Select a CSV file</p>
                             {/if}
                         </label>
                         
@@ -1684,11 +1684,11 @@
                             </select>
                         </div>
                         
-                        <div class="text-xs text-muted-foreground bg-muted/30 p-3 rounded-lg">
+                        <div class="text-xs text-foreground-muted bg-muted/30 p-3 rounded-lg">
                             <p class="font-medium mb-1">Expected CSV format:</p>
                             <code class="block text-foreground/70 font-mono">email,score,rank</code>
                             <code class="block text-foreground/70 font-mono">user@example.com,500,1</code>
-                            <p class="mt-2 text-muted-foreground/80">
+                            <p class="mt-2 text-foreground-muted/80">
                                 The first column should match your selection above.
                             </p>
                         </div>
@@ -1720,7 +1720,7 @@
         <div class="card w-full max-w-md">
             <div class="p-6 border-b border-border">
                 <h2 class="text-lg font-semibold">Add Prize Rule</h2>
-                <p class="text-sm text-muted-foreground">Define prizes for a rank range</p>
+                <p class="text-sm text-foreground-muted">Define prizes for a rank range</p>
             </div>
             
             <div class="p-6 space-y-4">
@@ -1748,7 +1748,7 @@
                             <option value={template.id}>{template.name}</option>
                         {/each}
                     </select>
-                    <p class="text-xs text-muted-foreground mt-1">
+                    <p class="text-xs text-foreground-muted mt-1">
                         <a href="/admin/certificates" class="text-primary hover:underline">Manage templates →</a>
                     </p>
                 </div>
@@ -1761,7 +1761,7 @@
                             <option value={pool.id}>{pool.name} ({pool.total_count - pool.claimed_count} available)</option>
                         {/each}
                     </select>
-                    <p class="text-xs text-muted-foreground mt-1">
+                    <p class="text-xs text-foreground-muted mt-1">
                         Winners in this rank range each receive a code from the pool
                     </p>
                 </div>
@@ -1797,7 +1797,7 @@
         <div class="card w-full max-w-md">
             <div class="p-6 border-b border-border">
                 <h2 class="text-lg font-semibold">New Voucher Pool</h2>
-                <p class="text-sm text-muted-foreground">Create a pool, then upload codes via CSV</p>
+                <p class="text-sm text-foreground-muted">Create a pool, then upload codes via CSV</p>
             </div>
 
             <div class="p-6 space-y-4">
@@ -1831,7 +1831,7 @@
         <div class="card w-full max-w-md">
             <div class="p-6 border-b border-border">
                 <h2 class="text-lg font-semibold">Assign Prize</h2>
-                <p class="text-sm text-muted-foreground">Assign to {assigningParticipant.name}</p>
+                <p class="text-sm text-foreground-muted">Assign to {assigningParticipant.name}</p>
             </div>
             
             <div class="p-6 space-y-4">

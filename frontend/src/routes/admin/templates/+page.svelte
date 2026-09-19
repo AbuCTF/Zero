@@ -192,7 +192,7 @@
         <div class="flex items-center justify-between">
             <div>
                 <h1 class="text-2xl font-semibold">Email Templates</h1>
-                <p class="text-sm text-muted-foreground mt-1">
+                <p class="text-sm text-foreground-muted mt-1">
                     Create and manage email templates with Jinja2 variables
                 </p>
             </div>
@@ -209,11 +209,11 @@
 
     {#if loading}
         <div class="card p-12 text-center">
-            <div class="animate-pulse text-muted-foreground">Loading templates...</div>
+            <div class="animate-pulse text-foreground-muted">Loading templates...</div>
         </div>
     {:else if templates.length === 0}
         <div class="card p-12 text-center">
-            <div class="text-muted-foreground mb-4">No email templates yet</div>
+            <div class="text-foreground-muted mb-4">No email templates yet</div>
             <button onclick={openAddModal} class="btn btn-primary">
                 Create Your First Template
             </button>
@@ -235,7 +235,7 @@
                                     </span>
                                 {/if}
                             </div>
-                            <p class="text-sm text-muted-foreground mt-1 truncate">
+                            <p class="text-sm text-foreground-muted mt-1 truncate">
                                 Subject: {template.subject}
                             </p>
                         </div>
@@ -323,7 +323,7 @@
                             placeholder="Welcome to {'{{'} event.name {'}}'}"
                             required
                         />
-                        <p class="text-xs text-muted-foreground mt-1">
+                        <p class="text-xs text-foreground-muted mt-1">
                             Supports Jinja2 variables
                         </p>
                     </div>
@@ -334,7 +334,7 @@
                                 HTML Body
                             </label>
                             <div class="flex items-center gap-2">
-                                <span class="text-xs text-muted-foreground">Insert variable:</span>
+                                <span class="text-xs text-foreground-muted">Insert variable:</span>
                                 <select 
                                     onchange={(e) => {
                                         const target = e.target as HTMLSelectElement;
@@ -362,7 +362,7 @@
                     </div>
 
                     <details class="group">
-                        <summary class="cursor-pointer text-sm font-medium text-muted-foreground hover:text-foreground">
+                        <summary class="cursor-pointer text-sm font-medium text-foreground-muted hover:text-foreground">
                             Plain Text Body (Optional)
                         </summary>
                         <div class="mt-3">
@@ -376,7 +376,7 @@
                     </details>
 
                     <details class="group">
-                        <summary class="cursor-pointer text-sm font-medium text-muted-foreground hover:text-foreground">
+                        <summary class="cursor-pointer text-sm font-medium text-foreground-muted hover:text-foreground">
                             Available Variables Reference
                         </summary>
                         <div class="mt-3 bg-muted/50 rounded-lg p-4">
@@ -386,7 +386,7 @@
                                         <code class="text-xs bg-muted px-1.5 py-0.5 rounded font-mono">
                                             {v.name}
                                         </code>
-                                        <span class="text-muted-foreground text-xs">{v.desc}</span>
+                                        <span class="text-foreground-muted text-xs">{v.desc}</span>
                                     </div>
                                 {/each}
                             </div>

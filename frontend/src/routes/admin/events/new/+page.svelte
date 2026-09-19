@@ -69,7 +69,7 @@
 <div class="p-6 lg:p-8">
 <div class="max-w-2xl mx-auto space-y-6">
     <div class="flex items-center gap-3">
-        <a href="/admin/events" class="text-muted-foreground hover:text-foreground transition-colors">
+        <a href="/admin/events" class="text-foreground-muted hover:text-foreground transition-colors">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
             </svg>
@@ -103,7 +103,7 @@
             <div>
                 <label for="slug" class="block text-sm font-medium mb-1.5">URL Slug</label>
                 <div class="flex items-center gap-2">
-                    <span class="text-sm text-muted-foreground">/events/</span>
+                    <span class="text-sm text-foreground-muted">/events/</span>
                     <input 
                         type="text" 
                         id="slug" 
@@ -114,7 +114,7 @@
                         required 
                     />
                 </div>
-                <p class="text-xs text-muted-foreground mt-1">
+                <p class="text-xs text-foreground-muted mt-1">
                     Only lowercase letters, numbers, and hyphens
                 </p>
             </div>
@@ -134,7 +134,7 @@
                 <input type="checkbox" bind:checked={form.is_import_only} class="rounded" />
                 <div>
                     <div class="text-sm font-medium">Import Only Mode</div>
-                    <div class="text-xs text-muted-foreground">
+                    <div class="text-xs text-foreground-muted">
                         Skip registration, just import participants for prize distribution
                     </div>
                 </div>
@@ -201,7 +201,7 @@
 
         <div class="card p-6 space-y-4">
             <h3 class="font-medium">CTFd Integration (Optional)</h3>
-            <p class="text-sm text-muted-foreground -mt-2">
+            <p class="text-sm text-foreground-muted -mt-2">
                 Connect to sync results automatically after the competition
             </p>
             
@@ -225,7 +225,7 @@
                     class="input" 
                     placeholder="ctfd_xxx..." 
                 />
-                <p class="text-xs text-muted-foreground mt-1">
+                <p class="text-xs text-foreground-muted mt-1">
                     Generate from CTFd Admin &gt; Config &gt; Access Tokens
                 </p>
             </div>

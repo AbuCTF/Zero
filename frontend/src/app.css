@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,300..800&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -6,60 +6,61 @@
 
 @layer base {
 	:root {
-		/* Light mode */
-		--background: 0 0% 99%;
-		--background-secondary: 0 0% 96%;
-		--background-tertiary: 0 0% 93%;
-		--foreground: 0 0% 8%;
-		--foreground-muted: 0 0% 40%;
-		--border: 0 0% 88%;
-		--border-hover: 0 0% 75%;
-		--card: 0 0% 100%;
-		--card-foreground: 0 0% 8%;
-		--primary: 0 0% 12%;
-		--primary-foreground: 0 0% 99%;
-		--primary-hover: 0 0% 20%;
-		--accent: 0 0% 94%;
-		--accent-foreground: 0 0% 8%;
-		--destructive: 0 65% 48%;
-		--destructive-foreground: 0 0% 99%;
-		--success: 145 65% 36%;
-		--success-foreground: 0 0% 99%;
-		--warning: 40 90% 48%;
-		--warning-foreground: 0 0% 8%;
-		--input: 0 0% 100%;
-		--input-focus: 0 0% 94%;
-		--ring: 0 0% 12%;
-		--brass: 36 34% 44%;
-		--radius: 6px;
+		/* Light mode — warm cream, gold accent (matches W26 palette family) */
+		--background: 40 30% 97%;
+		--background-secondary: 40 24% 94%;
+		--background-tertiary: 40 20% 90%;
+		--foreground: 30 25% 12%;
+		--foreground-muted: 34 13% 42%;
+		--border: 38 20% 85%;
+		--border-hover: 38 18% 72%;
+		--card: 40 33% 99%;
+		--card-foreground: 30 25% 12%;
+		--primary: 40 78% 50%;
+		--primary-foreground: 30 30% 10%;
+		--primary-hover: 40 80% 45%;
+		--accent: 40 24% 92%;
+		--accent-foreground: 30 25% 12%;
+		--destructive: 6 62% 48%;
+		--destructive-foreground: 40 33% 99%;
+		--success: 150 45% 34%;
+		--success-foreground: 40 33% 99%;
+		--warning: 38 85% 45%;
+		--warning-foreground: 30 25% 12%;
+		--input: 40 33% 99%;
+		--input-focus: 40 30% 96%;
+		--ring: 40 78% 50%;
+		--brass: 40 70% 44%;
+		--radius: 10px;
 	}
 
 	.dark {
-		/* Dark mode - true black for OLED, subtle grays */
-		--background: 0 0% 4%;
-		--background-secondary: 0 0% 7%;
-		--background-tertiary: 0 0% 10%;
-		--foreground: 0 0% 92%;
-		--foreground-muted: 0 0% 50%;
-		--border: 0 0% 14%;
-		--border-hover: 0 0% 22%;
-		--card: 0 0% 6%;
-		--card-foreground: 0 0% 92%;
-		--primary: 0 0% 92%;
-		--primary-foreground: 0 0% 4%;
-		--primary-hover: 0 0% 80%;
-		--accent: 0 0% 10%;
-		--accent-foreground: 0 0% 92%;
-		--destructive: 0 60% 55%;
-		--destructive-foreground: 0 0% 99%;
-		--success: 145 60% 42%;
-		--success-foreground: 0 0% 99%;
-		--warning: 40 85% 52%;
-		--warning-foreground: 0 0% 4%;
-		--input: 0 0% 8%;
-		--input-focus: 0 0% 12%;
-		--ring: 0 0% 92%;
-		--brass: 36 27% 63%;
+		/* Dark mode — W26 warm espresso, single gold accent */
+		--background: 30 21% 7%;          /* #17130f */
+		--background-secondary: 34 24% 11%; /* #221c15 */
+		--background-tertiary: 35 22% 14%;
+		--foreground: 44 41% 94%;         /* #f5f1e8 */
+		--foreground-muted: 38 18% 59%;   /* #a89b84 */
+		--border: 36 22% 16%;             /* #332b1f */
+		--border-hover: 38 20% 26%;
+		--card: 34 24% 11%;               /* #221c15 */
+		--card-foreground: 44 41% 94%;
+		--primary: 40 80% 61%;            /* #eab54c gold */
+		--primary-foreground: 30 30% 8%;  /* espresso on gold */
+		--primary-hover: 40 84% 67%;
+		--accent: 35 22% 15%;             /* warm surface for hovers */
+		--accent-foreground: 44 41% 94%;
+		--destructive: 6 60% 57%;
+		--destructive-foreground: 44 41% 94%;
+		--success: 150 34% 50%;
+		--success-foreground: 44 41% 94%;
+		--warning: 40 85% 58%;
+		--warning-foreground: 30 30% 8%;
+		--input: 33 22% 10%;
+		--input-focus: 34 22% 13%;
+		--ring: 40 80% 61%;
+		--brass: 40 80% 61%;              /* now the single gold accent */
+		--radius: 10px;
 	}
 
 	* {
@@ -68,21 +69,18 @@
 
 	html {
 		@apply scroll-smooth;
-		font-feature-settings: 'ss01', 'ss02', 'cv01', 'cv02';
+		font-optical-sizing: auto;
 	}
 
 	body {
 		@apply bg-background text-foreground antialiased;
-		font-family: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+		font-family: 'Bricolage Grotesque', system-ui, -apple-system, sans-serif;
 		letter-spacing: -0.01em;
 	}
 
-	/* Monospace for data, code, numbers */
-	code, kbd, pre, samp, 
-	.mono, .font-mono,
-	input[type="email"], 
-	input[type="number"],
-	table td {
+	/* Monospace kept only for machine strings + stat numbers (hybrid) */
+	code, kbd, pre, samp,
+	.mono, .font-mono, .text-mono {
 		font-family: 'IBM Plex Mono', ui-monospace, monospace;
 		font-feature-settings: 'zero', 'ss01';
 	}
@@ -104,16 +102,16 @@
 		@apply bg-border;
 	}
 
-	/* Focus styles - subtle ring */
+	/* Focus styles — gold ring */
 	*:focus-visible {
-		@apply outline-none ring-1 ring-offset-1;
-		ring-color: hsl(var(--ring));
-		ring-offset-color: hsl(var(--background));
+		@apply outline-none;
+		box-shadow: 0 0 0 3px hsl(var(--ring) / 0.35);
+		border-radius: 4px;
 	}
 
-	/* Selection */
+	/* Selection — gold */
 	::selection {
-		@apply bg-foreground/10;
+		background: hsl(var(--primary) / 0.28);
 	}
 
 	/* Headings - tighter tracking */
@@ -123,32 +121,31 @@
 }
 
 @layer components {
-	/* ===== BUTTONS ===== */
+	/* ===== BUTTONS (W26 pills: gold fill, lift on hover) ===== */
 	.btn {
-		@apply inline-flex items-center justify-center gap-2 
-		       px-4 py-2 text-sm font-medium
-		       rounded-[var(--radius)] 
+		@apply inline-flex items-center justify-center gap-2
+		       px-5 py-2 text-sm font-semibold
+		       rounded-full
 		       transition-all duration-150 ease-out
 		       disabled:opacity-40 disabled:pointer-events-none
 		       active:scale-[0.98];
-		font-family: 'IBM Plex Mono', monospace;
-		letter-spacing: 0.01em;
+		letter-spacing: 0.005em;
 	}
 
 	.btn-sm {
-		@apply px-3 py-1.5 text-xs;
+		@apply px-3.5 py-1.5 text-xs;
 	}
 
 	.btn-primary {
-		@apply btn bg-primary text-primary-foreground 
-		       hover:bg-primary-hover
-		       shadow-sm hover:shadow;
+		@apply btn bg-primary text-primary-foreground
+		       hover:bg-primary-hover hover:-translate-y-0.5
+		       shadow-sm hover:shadow-md;
 	}
 
 	.btn-secondary {
-		@apply btn bg-background text-foreground 
-		       border border-border
-		       hover:bg-accent hover:border-border-hover;
+		@apply btn bg-transparent text-foreground
+		       border border-primary/60
+		       hover:bg-primary hover:text-primary-foreground hover:-translate-y-0.5;
 	}
 
 	.btn-ghost {
@@ -157,29 +154,32 @@
 	}
 
 	.btn-destructive {
-		@apply btn bg-destructive text-destructive-foreground 
+		@apply btn bg-destructive text-destructive-foreground
 		       hover:opacity-90;
 	}
 
-	/* ===== INPUTS ===== */
+	/* ===== INPUTS (radius 10, gold focus ring) ===== */
 	.input {
-		@apply w-full px-3 py-2 text-sm 
-		       bg-input border border-border 
-		       rounded-[var(--radius)]
+		@apply w-full px-3.5 py-2 text-sm
+		       bg-input border border-border
+		       rounded-[10px]
 		       placeholder:text-foreground-muted/60
-		       focus:border-border-hover focus:bg-input-focus
+		       focus:border-primary/50 focus:bg-input-focus
 		       disabled:opacity-40 disabled:pointer-events-none
 		       transition-colors duration-150;
-		font-family: 'IBM Plex Mono', monospace;
+	}
+
+	.input:focus {
+		box-shadow: 0 0 0 3px hsl(var(--ring) / 0.16);
 	}
 
 	.input-label {
 		@apply block text-xs font-medium text-foreground-muted uppercase tracking-wide mb-1.5;
 	}
 
-	/* ===== CARDS ===== */
+	/* ===== CARDS (radius 16) ===== */
 	.card {
-		@apply bg-card border border-border rounded-lg p-5;
+		@apply bg-card border border-border rounded-2xl p-5;
 	}
 
 	.card-hover {
@@ -189,10 +189,9 @@
 
 	/* ===== BADGES ===== */
 	.badge {
-		@apply inline-flex items-center px-2 py-0.5 
-		       text-[10px] font-medium uppercase tracking-wider
+		@apply inline-flex items-center px-2.5 py-0.5
+		       text-[10px] font-semibold uppercase tracking-wider
 		       rounded-full;
-		font-family: 'IBM Plex Mono', monospace;
 	}
 
 	.badge-success {
@@ -212,12 +211,12 @@
 	}
 
 	.badge-primary {
-		@apply badge bg-primary/10 text-primary;
+		@apply badge bg-primary/15 text-primary;
 	}
 
 	/* ===== TABLES ===== */
 	.table-container {
-		@apply overflow-x-auto border border-border rounded-lg;
+		@apply overflow-x-auto border border-border rounded-2xl;
 	}
 
 	.table {
@@ -229,14 +228,14 @@
 	}
 
 	.table th {
-		@apply px-4 py-3 text-left text-[10px] font-semibold 
+		@apply px-4 py-3 text-left text-[10px] font-semibold
 		       text-foreground-muted uppercase tracking-wider
 		       border-b border-border;
-		font-family: 'IBM Plex Mono', monospace;
 	}
 
 	.table td {
 		@apply px-4 py-3 border-b border-border/60;
+		font-variant-numeric: tabular-nums;
 	}
 
 	.table tbody tr {
@@ -253,8 +252,8 @@
 
 	/* ===== SIDEBAR ===== */
 	.sidebar-link {
-		@apply flex items-center gap-3 px-3 py-2.5 
-		       text-sm text-foreground-muted 
+		@apply flex items-center gap-3 px-3 py-2.5
+		       text-sm text-foreground-muted
 		       rounded-[var(--radius)]
 		       transition-all duration-150
 		       hover:bg-accent hover:text-foreground;
@@ -266,17 +265,17 @@
 
 	/* ===== MODAL ===== */
 	.modal-backdrop {
-		@apply fixed inset-0 bg-black/60 backdrop-blur-sm 
+		@apply fixed inset-0 bg-black/60 backdrop-blur-sm
 		       flex items-center justify-center z-50 p-4;
 	}
 
 	.modal {
-		@apply bg-card rounded-lg shadow-2xl w-full max-w-md
+		@apply bg-card rounded-2xl shadow-2xl w-full max-w-md
 		       border border-border;
 	}
 
 	.modal-header {
-		@apply px-5 py-4 border-b border-border 
+		@apply px-5 py-4 border-b border-border
 		       flex items-center justify-between;
 	}
 
@@ -285,7 +284,7 @@
 	}
 
 	.modal-footer {
-		@apply px-5 py-4 border-t border-border 
+		@apply px-5 py-4 border-t border-border
 		       flex justify-end gap-3;
 	}
 
@@ -299,51 +298,48 @@
 		       border-b-2 border-transparent -mb-px
 		       transition-colors duration-150
 		       hover:text-foreground;
-		font-family: 'IBM Plex Mono', monospace;
 	}
 
 	.tab.active {
-		@apply text-foreground border-foreground;
+		@apply text-primary border-primary;
 	}
 
-	/* ===== REFINED PORTAL SURFACES (elegant, stoic · muted brass accent) ===== */
+	/* ===== SURFACES (warm gold-tinted, W26 feel) ===== */
 	.surface {
-		@apply relative overflow-hidden rounded-xl border border-white/[0.06];
+		@apply relative overflow-hidden rounded-2xl border border-border;
 		background:
-			radial-gradient(130% 130% at 100% 0%, hsl(36 30% 55% / 0.05), transparent 58%),
-			linear-gradient(180deg, hsl(36 22% 88% / 0.022), transparent 44%),
+			radial-gradient(130% 130% at 100% 0%, hsl(var(--primary) / 0.06), transparent 58%),
+			linear-gradient(180deg, hsl(var(--primary) / 0.02), transparent 44%),
 			hsl(var(--card));
 	}
 	.surface-plain {
-		@apply relative overflow-hidden rounded-xl border border-white/[0.06];
-		background: linear-gradient(180deg, hsl(36 22% 88% / 0.016), transparent 44%), hsl(var(--card));
+		@apply relative overflow-hidden rounded-2xl border border-border;
+		background: linear-gradient(180deg, hsl(var(--primary) / 0.015), transparent 44%), hsl(var(--card));
 	}
 	.surface-link {
-		@apply transition-all duration-200 hover:border-brass/25 hover:shadow-[0_0_0_1px_hsl(36_28%_58%_/_0.1)];
+		@apply transition-all duration-200 hover:border-primary/30 hover:shadow-[0_0_0_1px_hsl(var(--primary)_/_0.12)] hover:-translate-y-0.5;
 	}
 	.accent-bar {
 		@apply pointer-events-none absolute inset-x-0 top-0 h-px;
-		background: linear-gradient(90deg, transparent, hsl(36 30% 60% / 0.45), transparent);
+		background: linear-gradient(90deg, transparent, hsl(var(--primary) / 0.55), transparent);
 	}
 	.chip {
 		@apply inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium;
-		font-family: 'IBM Plex Mono', monospace;
 	}
 	.chip-ok {
-		@apply chip border-brass/25 bg-brass/[0.08] text-brass;
+		@apply chip border-primary/30 bg-primary/[0.10] text-primary;
 	}
 	.chip-warn {
-		@apply chip border-white/[0.09] bg-white/[0.04] text-foreground-muted;
+		@apply chip border-border bg-accent/50 text-foreground-muted;
 	}
 	.chip-muted {
-		@apply chip border-white/[0.07] bg-white/[0.02] text-foreground-muted;
+		@apply chip border-border bg-accent/30 text-foreground-muted;
 	}
 	.btn-accent {
-		@apply btn bg-primary text-primary-foreground shadow-sm hover:bg-primary-hover;
+		@apply btn bg-primary text-primary-foreground shadow-sm hover:bg-primary-hover hover:-translate-y-0.5;
 	}
 	.eyebrow {
 		@apply text-[11px] font-semibold uppercase tracking-[0.14em] text-foreground-muted;
-		font-family: 'IBM Plex Mono', monospace;
 	}
 }
 
@@ -359,23 +355,21 @@
 
 	.text-label {
 		@apply text-xs font-medium text-foreground-muted uppercase tracking-wider;
-		font-family: 'IBM Plex Mono', monospace;
 	}
 
 	.text-mono {
-		font-family: 'IBM Plex Mono', monospace;
+		font-family: 'IBM Plex Mono', ui-monospace, monospace;
 	}
 
-	/* ===== STAT VALUES ===== */
+	/* ===== STAT VALUES (mono + tabular for aligned figures) ===== */
 	.stat-value {
 		@apply text-2xl font-semibold tracking-tight;
-		font-family: 'IBM Plex Mono', monospace;
+		font-family: 'IBM Plex Mono', ui-monospace, monospace;
 		font-feature-settings: 'tnum';
 	}
 
 	.stat-label {
 		@apply text-[10px] font-medium text-foreground-muted uppercase tracking-wider;
-		font-family: 'IBM Plex Mono', monospace;
 	}
 
 	/* ===== LAYOUT ===== */
@@ -474,7 +468,7 @@
 
 	/* ===== DATA DISPLAY ===== */
 	.data-row {
-		@apply flex justify-between items-center py-2.5 
+		@apply flex justify-between items-center py-2.5
 		       border-b border-border/50 last:border-0;
 	}
 
@@ -484,6 +478,6 @@
 
 	.data-value {
 		@apply text-sm font-medium text-foreground;
-		font-family: 'IBM Plex Mono', monospace;
+		font-variant-numeric: tabular-nums;
 	}
 }

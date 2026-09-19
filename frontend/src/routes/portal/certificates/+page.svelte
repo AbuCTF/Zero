@@ -74,7 +74,7 @@
 <div class="space-y-6">
     <div>
         <h1 class="text-2xl font-semibold">Certificates</h1>
-        <p class="text-sm text-muted-foreground mt-1">
+        <p class="text-sm text-foreground-muted mt-1">
             Download and verify your participation certificates
         </p>
     </div>
@@ -87,17 +87,17 @@
 
     {#if loading}
         <div class="card p-12 text-center">
-            <div class="animate-pulse text-muted-foreground">Loading certificates...</div>
+            <div class="animate-pulse text-foreground-muted">Loading certificates...</div>
         </div>
     {:else if certificates.length === 0}
         <div class="card p-12 text-center">
             <div class="w-16 h-16 mx-auto mb-4 bg-muted rounded-full flex items-center justify-center">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-foreground-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
             </div>
             <h2 class="text-lg font-medium mb-2">No Certificates Yet</h2>
-            <p class="text-muted-foreground text-sm">
+            <p class="text-foreground-muted text-sm">
                 Certificates will be available after event results are finalized.
             </p>
         </div>
@@ -108,12 +108,12 @@
                     <!-- Preview -->
                     <div class="aspect-video bg-muted relative">
                         <div class="absolute inset-0 flex flex-col items-center justify-center">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 text-muted-foreground/50 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 text-foreground-muted/50 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                             </svg>
-                            <span class="text-sm font-medium text-muted-foreground">{cert.display_name}</span>
+                            <span class="text-sm font-medium text-foreground-muted">{cert.display_name}</span>
                             {#if cert.rank}
-                                <span class="text-xs text-muted-foreground">Rank #{cert.rank}</span>
+                                <span class="text-xs text-foreground-muted">Rank #{cert.rank}</span>
                             {/if}
                         </div>
                     </div>
@@ -122,7 +122,7 @@
                         <div class="flex items-start justify-between mb-2">
                             <div>
                                 <h3 class="font-medium">{cert.event_name}</h3>
-                                <div class="text-sm text-muted-foreground">
+                                <div class="text-sm text-foreground-muted">
                                     {getTypeLabel(cert.certificate_type)}
                                 </div>
                             </div>
@@ -134,7 +134,7 @@
                         <!-- Display Name Edit Section -->
                         <div class="mb-4 p-3 bg-muted/50 rounded-lg">
                             <div class="flex items-center justify-between mb-1">
-                                <span class="text-xs text-muted-foreground">Name on Certificate</span>
+                                <span class="text-xs text-foreground-muted">Name on Certificate</span>
                                 {#if cert.name_locked}
                                     <span class="badge badge-secondary text-xs" title="Name is locked after download">
                                         <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3 mr-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -191,7 +191,7 @@
                             {/if}
                         </div>
                         
-                        <div class="text-xs text-muted-foreground mb-4">
+                        <div class="text-xs text-foreground-muted mb-4">
                             Issued: {cert.created_at ? formatDate(cert.created_at) : '-'}
                         </div>
                         
@@ -216,8 +216,8 @@
                         
                         <div class="mt-3 pt-3 border-t border-border">
                             <div class="flex items-center justify-between text-xs">
-                                <span class="text-muted-foreground">Verification Code:</span>
-                                <code class="font-mono text-muted-foreground">
+                                <span class="text-foreground-muted">Verification Code:</span>
+                                <code class="font-mono text-foreground-muted">
                                     {cert.verification_code}
                                 </code>
                             </div>

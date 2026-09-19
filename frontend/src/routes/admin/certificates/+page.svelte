@@ -250,7 +250,7 @@
         <div class="flex items-center justify-between">
             <div>
                 <h1 class="text-2xl font-semibold">Certificate Templates</h1>
-                <p class="text-sm text-muted-foreground mt-1">
+                <p class="text-sm text-foreground-muted mt-1">
                     Design certificates with custom text placement
                 </p>
             </div>
@@ -267,11 +267,11 @@
 
     {#if loading}
         <div class="card p-12 text-center">
-            <div class="animate-pulse text-muted-foreground">Loading templates...</div>
+            <div class="animate-pulse text-foreground-muted">Loading templates...</div>
         </div>
     {:else if templates.length === 0}
         <div class="card p-12 text-center">
-            <div class="text-muted-foreground mb-4">No certificate templates yet</div>
+            <div class="text-foreground-muted mb-4">No certificate templates yet</div>
             <button onclick={openAddModal} class="btn btn-primary">
                 Create Your First Template
             </button>
@@ -288,7 +288,7 @@
                                 class="w-full h-full object-cover"
                             />
                         {:else}
-                            <div class="absolute inset-0 flex items-center justify-center text-muted-foreground">
+                            <div class="absolute inset-0 flex items-center justify-center text-foreground-muted">
                                 No preview
                             </div>
                         {/if}
@@ -297,10 +297,10 @@
                         <div class="flex items-start justify-between">
                             <div>
                                 <h3 class="font-medium">{template.name}</h3>
-                                <p class="text-sm text-muted-foreground">
+                                <p class="text-sm text-foreground-muted">
                                     {getEventName(template.event_id)} | {template.output_format.toUpperCase()}
                                 </p>
-                                <p class="text-xs text-muted-foreground mt-1">
+                                <p class="text-xs text-foreground-muted mt-1">
                                     {template.text_zones.length} text zone{template.text_zones.length !== 1 ? 's' : ''}
                                 </p>
                             </div>
@@ -404,10 +404,10 @@
                                     />
                                 </label>
                                 {#if form.background_image}
-                                    <span class="text-sm text-muted-foreground">Image uploaded</span>
+                                    <span class="text-sm text-foreground-muted">Image uploaded</span>
                                 {/if}
                             </div>
-                            <p class="text-xs text-muted-foreground mt-1">
+                            <p class="text-xs text-foreground-muted mt-1">
                                 Recommended: 1920x1080 for landscape, 1080x1920 for portrait
                             </p>
                         </div>
@@ -452,7 +452,7 @@
                             </div>
                             
                             {#if form.text_zones.length === 0}
-                                <p class="text-sm text-muted-foreground text-center py-4">
+                                <p class="text-sm text-foreground-muted text-center py-4">
                                     No text zones. Click "Add Zone" to create one.
                                 </p>
                             {:else}
@@ -483,7 +483,7 @@
                                             {#if selectedZone === zone.id}
                                                 <div class="grid grid-cols-2 gap-2 mt-2">
                                                     <div>
-                                                        <label class="text-xs text-muted-foreground">X (%)</label>
+                                                        <label class="text-xs text-foreground-muted">X (%)</label>
                                                         <input
                                                             type="number"
                                                             bind:value={zone.x}
@@ -493,7 +493,7 @@
                                                         />
                                                     </div>
                                                     <div>
-                                                        <label class="text-xs text-muted-foreground">Y (%)</label>
+                                                        <label class="text-xs text-foreground-muted">Y (%)</label>
                                                         <input
                                                             type="number"
                                                             bind:value={zone.y}
@@ -503,7 +503,7 @@
                                                         />
                                                     </div>
                                                     <div>
-                                                        <label class="text-xs text-muted-foreground">Font Size</label>
+                                                        <label class="text-xs text-foreground-muted">Font Size</label>
                                                         <input
                                                             type="number"
                                                             bind:value={zone.font_size}
@@ -513,7 +513,7 @@
                                                         />
                                                     </div>
                                                     <div>
-                                                        <label class="text-xs text-muted-foreground">Color</label>
+                                                        <label class="text-xs text-foreground-muted">Color</label>
                                                         <input
                                                             type="color"
                                                             bind:value={zone.color}
@@ -521,7 +521,7 @@
                                                         />
                                                     </div>
                                                     <div>
-                                                        <label class="text-xs text-muted-foreground">Font</label>
+                                                        <label class="text-xs text-foreground-muted">Font</label>
                                                         <select bind:value={zone.font_family} class="input text-sm py-1">
                                                             {#each fontFamilies as font}
                                                                 <option value={font}>{font}</option>
@@ -529,7 +529,7 @@
                                                         </select>
                                                     </div>
                                                     <div>
-                                                        <label class="text-xs text-muted-foreground">Align</label>
+                                                        <label class="text-xs text-foreground-muted">Align</label>
                                                         <select bind:value={zone.alignment} class="input text-sm py-1">
                                                             <option value="left">Left</option>
                                                             <option value="center">Center</option>
@@ -571,12 +571,12 @@
                                     </div>
                                 {/each}
                             {:else}
-                                <div class="absolute inset-0 flex items-center justify-center text-muted-foreground">
+                                <div class="absolute inset-0 flex items-center justify-center text-foreground-muted">
                                     Upload an image to preview
                                 </div>
                             {/if}
                         </div>
-                        <p class="text-xs text-muted-foreground mt-2 text-center">
+                        <p class="text-xs text-foreground-muted mt-2 text-center">
                             Text zones are shown at their approximate positions
                         </p>
                     </div>
