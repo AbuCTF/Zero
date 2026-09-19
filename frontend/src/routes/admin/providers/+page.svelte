@@ -310,7 +310,7 @@
 
 {#if showAddModal}
 	<div class="fixed inset-0 z-50 flex items-center justify-center p-4">
-		<div class="absolute inset-0 bg-black/50" onclick={() => showAddModal = false}></div>
+		<div class="absolute inset-0 bg-black/50" onclick={() => showAddModal = false} onkeydown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') showAddModal = false; }} role="button" tabindex="0" aria-label="Close dialog"></div>
 		<div class="relative bg-background border border-border rounded-lg w-full max-w-lg max-h-[90vh] overflow-auto">
 			<div class="p-6 border-b border-border">
 				<h2 class="text-lg font-semibold text-foreground">Add Email Provider</h2>

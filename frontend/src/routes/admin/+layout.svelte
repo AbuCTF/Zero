@@ -125,6 +125,7 @@
 						onclick={logout}
 						class="p-1 text-foreground-muted hover:text-foreground rounded hover:bg-accent transition-colors"
 						title="Logout"
+						aria-label="Logout"
 					>
 						<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
@@ -139,13 +140,14 @@
 				<button
 					onclick={() => sidebarOpen = !sidebarOpen}
 					class="p-2 -ml-2 text-foreground-muted hover:text-foreground"
+					aria-label="Toggle menu"
 				>
 					<svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
 					</svg>
 				</button>
 				<img src="/logo.png" alt="ZeroPool" class="h-7 w-auto" />
-				<button onclick={logout} class="p-2 -mr-2 text-foreground-muted hover:text-foreground">
+				<button onclick={logout} class="p-2 -mr-2 text-foreground-muted hover:text-foreground" aria-label="Logout">
 					<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
 					</svg>
@@ -155,7 +157,7 @@
 
 		{#if sidebarOpen}
 			<div class="lg:hidden fixed inset-0 z-40">
-				<div class="absolute inset-0 bg-black/50" onclick={() => sidebarOpen = false}></div>
+				<div class="absolute inset-0 bg-black/50" onclick={() => sidebarOpen = false} onkeydown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') sidebarOpen = false; }} role="button" tabindex="0" aria-label="Close menu"></div>
 				<aside class="absolute left-0 top-0 bottom-0 w-64 bg-background-secondary border-r border-border">
 					<div class="p-4 border-b border-border">
 						<img src="/logo.png" alt="ZeroPool" class="h-8 w-auto" />

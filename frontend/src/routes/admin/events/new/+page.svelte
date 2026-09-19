@@ -69,7 +69,7 @@
 <div class="p-6 lg:p-8">
 <div class="max-w-2xl mx-auto space-y-6">
     <div class="flex items-center gap-3">
-        <a href="/admin/events" class="text-foreground-muted hover:text-foreground transition-colors">
+        <a href="/admin/events" class="text-foreground-muted hover:text-foreground transition-colors" aria-label="Back to events">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
             </svg>

@@ -330,7 +330,7 @@
                 <h2 class="text-lg font-semibold">
                     {editingTemplate ? 'Edit Template' : 'New Certificate Template'}
                 </h2>
-                <button onclick={() => showModal = false} class="btn btn-ghost btn-sm">
+                <button onclick={() => showModal = false} class="btn btn-ghost btn-sm" aria-label="Close">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                     </svg>
@@ -384,15 +384,16 @@
                         </div>
 
                         <div>
-                            <label class="block text-sm font-medium mb-1.5">
+                            <label for="background-image" class="block text-sm font-medium mb-1.5">
                                 Background Image
                             </label>
                             <div class="flex items-center gap-3">
                                 <label class="btn btn-secondary cursor-pointer">
                                     {uploading ? 'Uploading...' : 'Upload Image'}
-                                    <input 
-                                        type="file" 
-                                        accept="image/*" 
+                                    <input
+                                        type="file"
+                                        id="background-image"
+                                        accept="image/*"
                                         onchange={handleImageUpload}
                                         class="hidden"
                                         disabled={uploading}
@@ -453,9 +454,13 @@
                             {:else}
                                 <div class="space-y-3 max-h-64 overflow-y-auto">
                                     {#each form.text_zones as zone}
-                                        <div 
+                                        <div
                                             class="p-3 rounded-lg border transition-colors cursor-pointer {selectedZone === zone.id ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'}"
+                                            role="button"
+                                            tabindex="0"
+                                            aria-label="Select text zone"
                                             onclick={() => selectedZone = zone.id}
+                                            onkeydown={(e) => { if (e.key === 'Enter') selectedZone = zone.id; }}
                                         >
                                             <div class="flex items-center justify-between mb-2">
                                                 <select 
@@ -478,9 +483,10 @@
                                             {#if selectedZone === zone.id}
                                                 <div class="grid grid-cols-2 gap-2 mt-2">
                                                     <div>
-                                                        <label class="text-xs text-foreground-muted">X (%)</label>
+                                                        <label for="{zone.id}-x" class="text-xs text-foreground-muted">X (%)</label>
                                                         <input
                                                             type="number"
+                                                            id="{zone.id}-x"
                                                             bind:value={zone.x}
                                                             class="input text-sm py-1"
                                                             min="0"
@@ -488,9 +494,10 @@
                                                         />
                                                     </div>
                                                     <div>
-                                                        <label class="text-xs text-foreground-muted">Y (%)</label>
+                                                        <label for="{zone.id}-y" class="text-xs text-foreground-muted">Y (%)</label>
                                                         <input
                                                             type="number"
+                                                            id="{zone.id}-y"
                                                             bind:value={zone.y}
                                                             class="input text-sm py-1"
                                                             min="0"
@@ -498,9 +505,10 @@
                                                         />
                                                     </div>
                                                     <div>
-                                                        <label class="text-xs text-foreground-muted">Font Size</label>
+                                                        <label for="{zone.id}-font-size" class="text-xs text-foreground-muted">Font Size</label>
                                                         <input
                                                             type="number"
+                                                            id="{zone.id}-font-size"
                                                             bind:value={zone.font_size}
                                                             class="input text-sm py-1"
                                                             min="8"
@@ -508,24 +516,25 @@
                                                         />
                                                     </div>
                                                     <div>
-                                                        <label class="text-xs text-foreground-muted">Color</label>
+                                                        <label for="{zone.id}-color" class="text-xs text-foreground-muted">Color</label>
                                                         <input
                                                             type="color"
+                                                            id="{zone.id}-color"
                                                             bind:value={zone.color}
                                                             class="input h-8 p-1"
                                                         />
                                                     </div>
                                                     <div>
-                                                        <label class="text-xs text-foreground-muted">Font</label>
-                                                        <select bind:value={zone.font_family} class="input text-sm py-1">
+                                                        <label for="{zone.id}-font" class="text-xs text-foreground-muted">Font</label>
+                                                        <select id="{zone.id}-font" bind:value={zone.font_family} class="input text-sm py-1">
                                                             {#each fontFamilies as font}
                                                                 <option value={font}>{font}</option>
                                                             {/each}
                                                         </select>
                                                     </div>
                                                     <div>
-                                                        <label class="text-xs text-foreground-muted">Align</label>
-                                                        <select bind:value={zone.alignment} class="input text-sm py-1">
+                                                        <label for="{zone.id}-align" class="text-xs text-foreground-muted">Align</label>
+                                                        <select id="{zone.id}-align" bind:value={zone.alignment} class="input text-sm py-1">
                                                             <option value="left">Left</option>
                                                             <option value="center">Center</option>
                                                             <option value="right">Right</option>

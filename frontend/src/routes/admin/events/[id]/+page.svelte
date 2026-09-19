@@ -682,7 +682,7 @@
         <div class="flex items-start justify-between">
             <div>
                 <div class="flex items-center gap-3 mb-1">
-                    <a href="/admin/events" class="text-foreground-muted hover:text-foreground transition-colors">
+                    <a href="/admin/events" class="text-foreground-muted hover:text-foreground transition-colors" aria-label="Back to events">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
                         </svg>
@@ -747,9 +747,10 @@
                     <div>
                         <p class="font-medium">{provisionResult.message}</p>
                     </div>
-                    <button 
+                    <button
                         onclick={() => provisionResult = null}
                         class="text-foreground-muted hover:text-foreground"
+                        aria-label="Dismiss"
                     >
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
@@ -950,7 +951,7 @@
                     <p class="font-medium">
                         {resendResult.message || `Queued ${formatNumber(resendResult.queued_count)} verification email${resendResult.queued_count !== 1 ? 's' : ''}.`}
                     </p>
-                    <button onclick={() => resendResult = null} class="text-foreground-muted hover:text-foreground">
+                    <button onclick={() => resendResult = null} class="text-foreground-muted hover:text-foreground" aria-label="Dismiss">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
                     </button>
                 </div>
@@ -1448,7 +1449,7 @@
         <div class="bg-card rounded-xl shadow-xl w-full max-w-md">
             <div class="px-6 py-4 border-b border-border flex items-center justify-between">
                 <h2 class="text-lg font-semibold">Import Participants</h2>
-                <button onclick={() => { showImportModal = false; importResult = null; importProgress = null; }} class="btn btn-ghost btn-sm" disabled={importing}>
+                <button onclick={() => { showImportModal = false; importResult = null; importProgress = null; }} class="btn btn-ghost btn-sm" disabled={importing} aria-label="Close">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                     </svg>
@@ -1642,8 +1643,8 @@
                         </label>
                         
                         <div>
-                            <label class="block text-sm font-medium mb-1.5">Match participants by</label>
-                            <select bind:value={matchBy} class="input">
+                            <label for="results-match-by" class="block text-sm font-medium mb-1.5">Match participants by</label>
+                            <select id="results-match-by" bind:value={matchBy} class="input">
                                 <option value="email">Email</option>
                                 <option value="username">Username</option>
                                 <option value="name">Name</option>
@@ -1690,24 +1691,24 @@
             
             <div class="p-6 space-y-4">
                 <div>
-                    <label class="block text-sm font-medium mb-1.5">Rule Name</label>
-                    <input type="text" bind:value={newRule.name} class="input" placeholder="e.g., Top 3 Winners" required />
+                    <label for="prize-rule-name" class="block text-sm font-medium mb-1.5">Rule Name</label>
+                    <input type="text" id="prize-rule-name" bind:value={newRule.name} class="input" placeholder="e.g., Top 3 Winners" required />
                 </div>
                 
                 <div class="grid grid-cols-2 gap-4">
                     <div>
-                        <label class="block text-sm font-medium mb-1.5">Rank From</label>
-                        <input type="number" bind:value={newRule.rank_from} class="input" min="1" required />
+                        <label for="prize-rule-rank-from" class="block text-sm font-medium mb-1.5">Rank From</label>
+                        <input type="number" id="prize-rule-rank-from" bind:value={newRule.rank_from} class="input" min="1" required />
                     </div>
                     <div>
-                        <label class="block text-sm font-medium mb-1.5">Rank To</label>
-                        <input type="number" bind:value={newRule.rank_to} class="input" min="1" required />
+                        <label for="prize-rule-rank-to" class="block text-sm font-medium mb-1.5">Rank To</label>
+                        <input type="number" id="prize-rule-rank-to" bind:value={newRule.rank_to} class="input" min="1" required />
                     </div>
                 </div>
                 
                 <div>
-                    <label class="block text-sm font-medium mb-1.5">Certificate Template</label>
-                    <select bind:value={newRule.certificate_template_id} class="input">
+                    <label for="prize-rule-cert-template" class="block text-sm font-medium mb-1.5">Certificate Template</label>
+                    <select id="prize-rule-cert-template" bind:value={newRule.certificate_template_id} class="input">
                         <option value="">No certificate</option>
                         {#each certTemplates as template}
                             <option value={template.id}>{template.name}</option>
@@ -1719,8 +1720,8 @@
                 </div>
 
                 <div>
-                    <label class="block text-sm font-medium mb-1.5">Voucher Pool</label>
-                    <select bind:value={newRule.voucher_pool_id} class="input">
+                    <label for="prize-rule-voucher-pool" class="block text-sm font-medium mb-1.5">Voucher Pool</label>
+                    <select id="prize-rule-voucher-pool" bind:value={newRule.voucher_pool_id} class="input">
                         <option value="">No voucher</option>
                         {#each voucherPools as pool}
                             <option value={pool.id}>{pool.name} ({pool.total_count - pool.claimed_count} available)</option>
@@ -1732,11 +1733,12 @@
                 </div>
 
                 <div class="border-t border-border pt-4">
-                    <label class="block text-sm font-medium mb-1.5">Custom Prize (Optional)</label>
-                    <input 
-                        type="text" 
-                        bind:value={newRule.custom_prize_title} 
-                        class="input mb-2" 
+                    <label for="prize-rule-custom-title" class="block text-sm font-medium mb-1.5">Custom Prize (Optional)</label>
+                    <input
+                        type="text"
+                        id="prize-rule-custom-title"
+                        bind:value={newRule.custom_prize_title}
+                        class="input mb-2"
                         placeholder="Prize title (e.g., HTB VIP Subscription)"
                     />
                     <textarea 
@@ -1766,16 +1768,16 @@
 
             <div class="p-6 space-y-4">
                 <div>
-                    <label class="block text-sm font-medium mb-1.5">Pool Name</label>
-                    <input type="text" bind:value={newPool.name} class="input" placeholder="e.g., HTB VIP Vouchers" required />
+                    <label for="pool-name" class="block text-sm font-medium mb-1.5">Pool Name</label>
+                    <input type="text" id="pool-name" bind:value={newPool.name} class="input" placeholder="e.g., HTB VIP Vouchers" required />
                 </div>
                 <div>
-                    <label class="block text-sm font-medium mb-1.5">Platform (Optional)</label>
-                    <input type="text" bind:value={newPool.platform} class="input" placeholder="e.g., HackTheBox" />
+                    <label for="pool-platform" class="block text-sm font-medium mb-1.5">Platform (Optional)</label>
+                    <input type="text" id="pool-platform" bind:value={newPool.platform} class="input" placeholder="e.g., HackTheBox" />
                 </div>
                 <div>
-                    <label class="block text-sm font-medium mb-1.5">Description (Optional)</label>
-                    <textarea bind:value={newPool.description} class="input" rows="2" placeholder="Notes about this pool"></textarea>
+                    <label for="pool-description" class="block text-sm font-medium mb-1.5">Description (Optional)</label>
+                    <textarea id="pool-description" bind:value={newPool.description} class="input" rows="2" placeholder="Notes about this pool"></textarea>
                 </div>
             </div>
 
@@ -1799,8 +1801,8 @@
             
             <div class="p-6 space-y-4">
                 <div>
-                    <label class="block text-sm font-medium mb-1.5">Certificate Template</label>
-                    <select bind:value={assignForm.certificate_template_id} class="input">
+                    <label for="assign-cert-template" class="block text-sm font-medium mb-1.5">Certificate Template</label>
+                    <select id="assign-cert-template" bind:value={assignForm.certificate_template_id} class="input">
                         <option value="">No certificate</option>
                         {#each certTemplates as template}
                             <option value={template.id}>{template.name}</option>
@@ -1809,11 +1811,12 @@
                 </div>
                 
                 <div class="border-t border-border pt-4">
-                    <label class="block text-sm font-medium mb-1.5">Or Custom Prize</label>
-                    <input 
-                        type="text" 
-                        bind:value={assignForm.custom_prize_title} 
-                        class="input mb-2" 
+                    <label for="assign-custom-title" class="block text-sm font-medium mb-1.5">Or Custom Prize</label>
+                    <input
+                        type="text"
+                        id="assign-custom-title"
+                        bind:value={assignForm.custom_prize_title}
+                        class="input mb-2"
                         placeholder="Prize title"
                     />
                     <textarea 

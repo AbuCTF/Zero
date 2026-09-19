@@ -129,14 +129,14 @@
 
         {#if loading}
             <div class="max-w-sm mx-auto text-center space-y-3 mb-12">
-                <div class="skeleton h-7 w-48 mx-auto rounded" />
-                <div class="skeleton h-4 w-64 mx-auto rounded" />
-                <div class="skeleton h-3 w-28 mx-auto rounded" />
+                <div class="skeleton h-7 w-48 mx-auto rounded"></div>
+                <div class="skeleton h-4 w-64 mx-auto rounded"></div>
+                <div class="skeleton h-3 w-28 mx-auto rounded"></div>
             </div>
             <div class="max-w-sm mx-auto card space-y-4">
-                <div class="skeleton h-9 rounded" />
-                <div class="skeleton h-9 rounded" />
-                <div class="skeleton h-10 rounded" />
+                <div class="skeleton h-9 rounded"></div>
+                <div class="skeleton h-9 rounded"></div>
+                <div class="skeleton h-10 rounded"></div>
             </div>
 
         {:else if error && !event}
@@ -166,7 +166,7 @@
                 <div class="mt-6 flex items-center justify-center gap-2.5 text-xs font-mono">
                     {#if event.event_start}
                         <span class="text-foreground-muted">{formatDate(event.event_start)}</span>
-                        <span class="w-1 h-1 rounded-full bg-border-hover flex-shrink-0" aria-hidden="true" />
+                        <span class="w-1 h-1 rounded-full bg-border-hover flex-shrink-0" aria-hidden="true"></span>
                     {/if}
                     <span class={getRegistrationStatus().class}>
                         {getRegistrationStatus().text}

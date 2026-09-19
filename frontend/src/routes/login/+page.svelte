@@ -166,6 +166,10 @@
 	<div
 		class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-4"
 		onclick={(e) => { if (e.target === e.currentTarget) { showForgotPassword = false; forgotMessage = ''; forgotError = ''; } }}
+		onkeydown={(e) => { if (e.key === 'Enter' || e.key === 'Escape') { showForgotPassword = false; forgotMessage = ''; forgotError = ''; } }}
+		role="button"
+		tabindex="0"
+		aria-label="Close dialog"
 	>
 		<div class="bg-card border border-border rounded-xl shadow-2xl w-full max-w-sm fade-in">
 			<div class="px-5 py-4 border-b border-border flex items-center justify-between">
@@ -173,6 +177,7 @@
 				<button
 					onclick={() => { showForgotPassword = false; forgotMessage = ''; forgotError = ''; }}
 					class="text-foreground-muted hover:text-foreground transition-colors p-1 -mr-1"
+					aria-label="Close"
 				>
 					<svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />

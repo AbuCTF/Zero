@@ -47,7 +47,7 @@
 <div class="min-h-screen bg-background flex items-center justify-center px-6">
 	<div class="w-full max-w-xs">
 		<div class="text-center mb-8">
-			<a href="/" class="inline-flex items-center gap-2 text-foreground mb-4">
+			<a href="/" class="inline-flex items-center gap-2 text-foreground mb-4" aria-label="Home">
 				<div class="w-10 h-10 rounded-xl bg-foreground flex items-center justify-center">
 					<svg class="w-5 h-5 text-background" viewBox="0 0 24 24" fill="none">
 						<path d="M12 2L2 7l10 5 10-5-10-5z" fill="currentColor" opacity="0.3"/>
