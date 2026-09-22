@@ -134,9 +134,8 @@ async def login(
     redis=Depends(get_redis),
 ):
     """login for admin users and participants; checks users table first, then participants."""
-    # verify captcha (no-op unless turnstile configured)
-    await verify_turnstile(data.turnstile_token, get_client_ip(request))
-
+    # no captcha here: the login ui has no turnstile widget; brute-force is covered by
+    # the auth:login rate limit + admin lockout below. captcha stays on /register.
     result = await db.execute(
         select(User).where(User.email == data.email.lower())
     )
