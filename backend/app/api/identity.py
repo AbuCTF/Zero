@@ -88,6 +88,31 @@ async def provision_identity(
             )
         )
         participant = result.scalar_one_or_none()
+
+        # heal pre-existing email registrants: someone who registered by email but
+        # never linked a discord gets it linked on their first discord sign-in,
+        # matched by the discord VERIFIED email. only links a participant who has
+        # no discord yet (won't hijack a linked account); still never creates.
+        if participant is None and data.email and data.email_verified:
+            match = await db.execute(
+                select(Participant).where(
+                    Participant.event_id == event.id,
+                    Participant.email == data.email.lower(),
+                )
+            )
+            cand = match.scalar_one_or_none()
+            if cand is not None and not (cand.extra_data or {}).get("discord_id"):
+                extra = dict(cand.extra_data or {})
+                extra["discord_id"] = data.discord_id
+                if data.discord_username:
+                    extra["discord_username"] = data.discord_username[:64]
+                cand.extra_data = extra
+                if not cand.email_verified:
+                    cand.email_verified = True
+                    cand.email_verified_at = datetime.now(timezone.utc)
+                await db.flush()
+                participant = cand
+
         if participant is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
