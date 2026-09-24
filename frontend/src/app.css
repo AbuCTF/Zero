@@ -6,61 +6,61 @@
 
 @layer base {
 	:root {
-		/* Light mode — warm cream, gold accent (matches W26 palette family) */
-		--background: 40 30% 97%;
-		--background-secondary: 40 24% 94%;
-		--background-tertiary: 40 20% 90%;
-		--foreground: 30 25% 12%;
-		--foreground-muted: 34 13% 42%;
-		--border: 38 20% 85%;
-		--border-hover: 38 18% 72%;
-		--card: 40 33% 99%;
-		--card-foreground: 30 25% 12%;
-		--primary: 40 78% 50%;
-		--primary-foreground: 30 30% 10%;
-		--primary-hover: 40 80% 45%;
-		--accent: 40 24% 92%;
-		--accent-foreground: 30 25% 12%;
-		--destructive: 6 62% 48%;
-		--destructive-foreground: 40 33% 99%;
-		--success: 150 45% 34%;
-		--success-foreground: 40 33% 99%;
-		--warning: 38 85% 45%;
-		--warning-foreground: 30 25% 12%;
-		--input: 40 33% 99%;
-		--input-focus: 40 30% 96%;
-		--ring: 40 78% 50%;
-		--brass: 40 70% 44%;
-		--radius: 10px;
+		/* Light — clean cool paper, refined amber accent */
+		--background: 210 20% 98%;
+		--background-secondary: 214 18% 95%;
+		--background-tertiary: 214 16% 91%;
+		--foreground: 220 26% 13%;
+		--foreground-muted: 218 12% 46%;
+		--border: 216 16% 88%;
+		--border-hover: 216 14% 77%;
+		--card: 0 0% 100%;
+		--card-foreground: 220 26% 13%;
+		--primary: 36 92% 48%;
+		--primary-foreground: 40 60% 99%;
+		--primary-hover: 36 94% 43%;
+		--accent: 214 18% 94%;
+		--accent-foreground: 220 26% 13%;
+		--destructive: 358 66% 52%;
+		--destructive-foreground: 0 0% 100%;
+		--success: 152 52% 38%;
+		--success-foreground: 0 0% 100%;
+		--warning: 36 92% 46%;
+		--warning-foreground: 40 60% 99%;
+		--input: 0 0% 100%;
+		--input-focus: 214 18% 97%;
+		--ring: 36 92% 48%;
+		--brass: 36 92% 48%;
+		--radius: 12px;
 	}
 
 	.dark {
-		/* Dark mode — W26 warm espresso, single gold accent */
-		--background: 30 21% 7%;          /* #17130f */
-		--background-secondary: 34 24% 11%; /* #221c15 */
-		--background-tertiary: 35 22% 14%;
-		--foreground: 44 41% 94%;         /* #f5f1e8 */
-		--foreground-muted: 38 18% 59%;   /* #a89b84 */
-		--border: 36 22% 16%;             /* #332b1f */
-		--border-hover: 38 20% 26%;
-		--card: 34 24% 11%;               /* #221c15 */
-		--card-foreground: 44 41% 94%;
-		--primary: 40 80% 61%;            /* #eab54c gold */
-		--primary-foreground: 30 30% 8%;  /* espresso on gold */
-		--primary-hover: 40 84% 67%;
-		--accent: 35 22% 15%;             /* warm surface for hovers */
-		--accent-foreground: 44 41% 94%;
-		--destructive: 6 60% 57%;
-		--destructive-foreground: 44 41% 94%;
-		--success: 150 34% 50%;
-		--success-foreground: 44 41% 94%;
-		--warning: 40 85% 58%;
-		--warning-foreground: 30 30% 8%;
-		--input: 33 22% 10%;
-		--input-focus: 34 22% 13%;
-		--ring: 40 80% 61%;
-		--brass: 40 80% 61%;              /* now the single gold accent */
-		--radius: 10px;
+		/* Dark — deep cool slate ink, one refined amber accent */
+		--background: 222 24% 7%;          /* #0d0f14 */
+		--background-secondary: 220 18% 10%; /* #151922 */
+		--background-tertiary: 220 16% 14%;
+		--foreground: 210 25% 96%;         /* #f0f3f7 */
+		--foreground-muted: 216 14% 63%;   /* #939caa */
+		--border: 220 15% 18%;             /* #262b35 */
+		--border-hover: 220 14% 30%;
+		--card: 220 19% 10%;               /* #141820 */
+		--card-foreground: 210 25% 96%;
+		--primary: 38 94% 60%;             /* #f4ab3f refined amber */
+		--primary-foreground: 30 45% 8%;   /* ink on amber */
+		--primary-hover: 38 98% 66%;
+		--accent: 220 15% 16%;             /* cool surface for hovers */
+		--accent-foreground: 210 25% 96%;
+		--destructive: 358 70% 63%;
+		--destructive-foreground: 210 25% 96%;
+		--success: 152 58% 50%;
+		--success-foreground: 220 24% 8%;
+		--warning: 38 94% 60%;
+		--warning-foreground: 30 45% 8%;
+		--input: 220 18% 9%;
+		--input-focus: 220 16% 12%;
+		--ring: 38 94% 60%;
+		--brass: 38 94% 60%;               /* single refined amber accent */
+		--radius: 12px;
 	}
 
 	* {
