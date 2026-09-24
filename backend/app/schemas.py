@@ -54,8 +54,9 @@ class VerifyEmailRequest(BaseModel):
 
 
 class ResendVerificationRequest(BaseModel):
-    email: EmailStr
-    event_slug: str
+    email: EmailStr | None = None
+    event_slug: str | None = None
+    token: str | None = None  # stale verification token from an expired link (one-click resend)
 
 
 class PasswordResetRequest(BaseModel):

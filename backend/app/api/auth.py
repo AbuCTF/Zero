@@ -579,52 +579,67 @@ async def resend_verification(
     db: AsyncSession = Depends(get_session),
     redis=Depends(get_redis),
 ):
-    result = await db.execute(
-        select(Event).where(Event.slug == data.event_slug.lower())
+    generic = BaseResponse(
+        success=True,
+        message="If the email is registered, a verification email is on its way.",
     )
-    event = result.scalar_one_or_none()
 
-    if not event:
-        # don't reveal if event exists
-        return BaseResponse(
-            success=True,
-            message="If the email is registered, a verification email has been sent.",
-        )
-    
-    result = await db.execute(
-        select(Participant).where(
-            Participant.event_id == event.id,
-            Participant.email == data.email.lower(),
-        )
-    )
-    participant = result.scalar_one_or_none()
+    participant = None
+    event = None
 
-    if not participant or participant.email_verified:
-        # don't reveal account status
-        return BaseResponse(
-            success=True,
-            message="If the email is registered, a verification email has been sent.",
+    if data.token:
+        # one-click resend from an expired link: the stale token still identifies the account
+        result = await db.execute(
+            select(Participant).where(Participant.email_verification_token == data.token)
         )
+        participant = result.scalar_one_or_none()
+        if participant:
+            event = (
+                await db.execute(select(Event).where(Event.id == participant.event_id))
+            ).scalar_one_or_none()
+    elif data.email:
+        if data.event_slug:
+            event = (
+                await db.execute(select(Event).where(Event.slug == data.event_slug.lower()))
+            ).scalar_one_or_none()
+        else:
+            # no slug given: fall back to the single active event, if unambiguous
+            active = (
+                await db.execute(
+                    select(Event).where(Event.status.in_(["registration", "live"]))
+                )
+            ).scalars().all()
+            event = active[0] if len(active) == 1 else None
+        if event:
+            participant = (
+                await db.execute(
+                    select(Participant).where(
+                        Participant.event_id == event.id,
+                        Participant.email == data.email.lower(),
+                    )
+                )
+            ).scalar_one_or_none()
 
-    # rate limit: max 1 email per 5 minutes
+    # never reveal whether the account exists or its status
+    if not participant or not event or participant.email_verified:
+        return generic
+
+    # 5-minute per-account cooldown
     if participant.email_verification_sent_at:
         time_since_last = datetime.now(timezone.utc) - participant.email_verification_sent_at
         if time_since_last < timedelta(minutes=5):
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail="Please wait before requesting another verification email",
+                detail="Please wait a few minutes before requesting another verification email.",
             )
-    
+
     verification_token = generate_verification_token()
     participant.email_verification_token = verification_token
     participant.email_verification_sent_at = datetime.now(timezone.utc)
-    verification_url = f"{settings.app_url}/verify?token={verification_token}"
-    await _send_verification_email(db, redis, participant, event, verification_url)
-    
-    return BaseResponse(
-        success=True,
-        message="If the email is registered, a verification email has been sent.",
+    await _send_verification_email(
+        db, redis, participant, event, f"{settings.app_url}/verify?token={verification_token}"
     )
+    return generic
 
 
 async def _log_audit(

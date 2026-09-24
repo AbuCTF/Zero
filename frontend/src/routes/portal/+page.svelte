@@ -8,6 +8,8 @@
 	let loading = $state(true);
 	let entering = $state(false);
 	let enterError = $state('');
+	let resending = $state(false);
+	let resendMsg = $state('');
 
 	onMount(async () => {
 		try {
@@ -65,6 +67,21 @@
 		} catch (e: any) {
 			enterError = e?.message || 'Could not enter the competition. Please try again.';
 			entering = false;
+		}
+	}
+
+	async function resendVerification() {
+		if (resending) return;
+		resending = true;
+		resendMsg = '';
+		enterError = '';
+		try {
+			const r = await api.participant.resendVerification();
+			resendMsg = r.message || 'Verification email sent — check your inbox (and spam).';
+		} catch (e: any) {
+			enterError = e?.message || 'Could not resend right now. Please try again shortly.';
+		} finally {
+			resending = false;
 		}
 	}
 </script>
@@ -166,21 +183,31 @@
 									</div>
 								{/if}
 							</div>
-							{#if discordUrl(ev) || ev.status === 'live'}
-								<div class="mt-5 flex flex-wrap items-center gap-2.5 border-t border-white/[0.06] pt-5">
-									{#if ev.status === 'live'}
-										<button onclick={enterCompetition} disabled={entering} class="btn-accent btn-sm">
-											{entering ? 'Entering…' : 'Enter competition'}
-										</button>
+							<div class="mt-5 flex flex-wrap items-center gap-2.5 border-t border-white/[0.06] pt-5">
+								{#if participant?.email_verified}
+									<button onclick={enterCompetition} disabled={entering} class="btn-accent btn-sm">
+										{entering ? 'Entering…' : 'Enter competition'}
+									</button>
+									{#if ev.status !== 'live'}
+										{@const cd2 = countdown(ev.event_start)}
+										<span class="text-xs text-foreground-muted">{cd2 ? `Opens in ${cd2.value} ${cd2.unit}` : 'Opens when the CTF begins'}</span>
 									{/if}
-									{#if discordUrl(ev)}
-										<a href={discordUrl(ev)} target="_blank" rel="noopener" class="btn-secondary btn-sm">Join Discord</a>
-									{/if}
-									{#if enterError}
-										<span class="text-xs text-destructive">{enterError}</span>
-									{/if}
-								</div>
-							{/if}
+								{:else}
+									<span class="text-sm text-foreground-muted">Verify your email to enter the competition.</span>
+									<button onclick={resendVerification} disabled={resending} class="btn-secondary btn-sm">
+										{resending ? 'Sending…' : 'Resend verification email'}
+									</button>
+								{/if}
+								{#if discordUrl(ev)}
+									<a href={discordUrl(ev)} target="_blank" rel="noopener" class="btn-secondary btn-sm">Join Discord</a>
+								{/if}
+								{#if enterError}
+									<span class="text-xs text-destructive">{enterError}</span>
+								{/if}
+								{#if resendMsg}
+									<span class="text-xs text-brass">{resendMsg}</span>
+								{/if}
+							</div>
 						</section>
 					{/each}
 				</div>

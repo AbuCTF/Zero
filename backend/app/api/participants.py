@@ -390,6 +390,113 @@ async def get_participant_events(
     ]
 
 
+class LinkDiscordRequest(BaseModel):
+    verify_token: str
+
+
+@router.post(
+    "/me/resend-verification",
+    response_model=BaseResponse,
+    dependencies=[Depends(rate_limit("participants:resend-verif", (3, 60), (8, 3600)))],
+)
+async def resend_my_verification(
+    participant: Participant = Depends(require_participant),
+    db: AsyncSession = Depends(get_session),
+    redis=Depends(get_redis),
+):
+    """resend the verification email to the signed-in participant's own address.
+
+    safe if already verified; 5-minute per-account cooldown so the button can't be
+    hammered. sends via the same pooled providers registration uses.
+    """
+    if participant.email_verified:
+        return BaseResponse(success=True, message="Your email is already verified.")
+
+    if participant.email_verification_sent_at:
+        elapsed = datetime.now(timezone.utc) - participant.email_verification_sent_at
+        if elapsed < timedelta(minutes=5):
+            wait = max(1, 5 - int(elapsed.total_seconds() // 60))
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"We just sent one — please wait about {wait} more minute(s) before resending.",
+            )
+
+    result = await db.execute(select(Event).where(Event.id == participant.event_id))
+    event = result.scalar_one_or_none()
+    if not event:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found")
+
+    from app.api.auth import _send_verification_email
+    from app.utils.security import generate_verification_token
+
+    token = generate_verification_token()
+    participant.email_verification_token = token
+    participant.email_verification_sent_at = datetime.now(timezone.utc)
+    await _send_verification_email(
+        db, redis, participant, event, f"{settings.app_url}/verify?token={token}"
+    )
+    await db.commit()
+    return BaseResponse(success=True, message=f"Verification email sent to {participant.email}.")
+
+
+@router.post(
+    "/me/link-discord",
+    response_model=BaseResponse,
+    dependencies=[Depends(rate_limit("participants:link-discord", (5, 60), (20, 3600)))],
+)
+async def link_discord(
+    data: LinkDiscordRequest,
+    participant: Participant = Depends(require_participant),
+    db: AsyncSession = Depends(get_session),
+):
+    """link a discord account to the signed-in participant.
+
+    consumes the short-lived verify token minted by the /api/auth/discord popup
+    (the same one registration uses), then refuses to overwrite an existing link
+    or steal a discord already tied to someone else in the event.
+    """
+    from app.utils import discord as discord_oauth
+
+    info = discord_oauth.read_verify_token(data.verify_token)
+    if not info or not info.get("id"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Discord verification expired or invalid. Please reconnect Discord and try again.",
+        )
+    discord_id = str(info["id"])
+    discord_username = info.get("u") or info.get("g") or ""
+
+    extra = dict(participant.extra_data or {})
+    existing = extra.get("discord_id")
+    if existing and existing != discord_id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A different Discord account is already linked to this profile.",
+        )
+
+    dupe = await db.execute(
+        select(Participant.id).where(
+            Participant.event_id == participant.event_id,
+            Participant.extra_data["discord_id"].astext == discord_id,
+            Participant.id != participant.id,
+        )
+    )
+    if dupe.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This Discord account is already linked to another registration.",
+        )
+
+    extra["discord_id"] = discord_id
+    if discord_username:
+        extra["discord_username"] = discord_username[:64]
+    participant.extra_data = extra
+    await db.commit()
+    return BaseResponse(
+        success=True, message=f"Discord linked: @{discord_username or discord_id}"
+    )
+
+
 @router.post(
     "/me/sso",
     dependencies=[Depends(rate_limit("participants:sso", (20, 60), (200, 3600)))],

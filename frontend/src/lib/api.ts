@@ -411,6 +411,17 @@ export const participant = {
 			method: 'POST'
 		}),
 
+	resendVerification: () =>
+		request<{ success: boolean; message: string }>('/participants/me/resend-verification', {
+			method: 'POST'
+		}),
+
+	linkDiscord: (verifyToken: string) =>
+		request<{ success: boolean; message: string }>('/participants/me/link-discord', {
+			method: 'POST',
+			body: JSON.stringify({ verify_token: verifyToken })
+		}),
+
 	requestAccess: (email: string, eventId?: string) =>
 		request<{ 
 			success: boolean; 
