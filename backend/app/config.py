@@ -68,7 +68,7 @@ class Settings(BaseSettings):
     discord_client_id: str = "1547022816937771028"
     discord_client_secret: Optional[str] = None
     discord_redirect_uri: str = "https://app.h7tex.com/api/auth/discord/callback"
-    discord_min_account_age_days: int = 7
+    discord_min_account_age_days: int = 0  # 0 = no age gate; blocks legit newcomers otherwise (Discord-required + dupe-guard + turnstile cover abuse)
     # origins allowed to open the oauth popup and receive its postmessage token
     discord_popup_origins: str = (
         "https://2026.h7tex.com,https://app.h7tex.com,http://localhost:5173,http://localhost:3000"
