@@ -9,6 +9,11 @@
 	let showEventPicker = $state(false);
 	let availableEvents = $state<Array<{ id: string; name: string; slug: string }>>([]);
 
+	let resendingLink = $state(false);
+	let resendingVerif = $state(false);
+	let linkNote = $state('');
+	let verifNote = $state('');
+
 	async function handleSubmit(selectedEventId?: string) {
 		if (!email) return;
 		loading = true;
@@ -22,10 +27,47 @@
 				sent = true;
 			}
 		} catch (e: any) {
-			error = e.message || 'Failed to send access link';
+			error = e.message || 'Could not send the link. Please try again.';
 		} finally {
 			loading = false;
 		}
+	}
+
+	async function resendLink() {
+		if (resendingLink) return;
+		resendingLink = true;
+		linkNote = '';
+		try {
+			await api.participant.requestAccess(email);
+			linkNote = 'Sent again — give it a minute, and check your spam folder.';
+		} catch (e: any) {
+			linkNote = e?.message || 'Could not resend just now — try again shortly.';
+		} finally {
+			resendingLink = false;
+		}
+	}
+
+	async function resendVerification() {
+		if (resendingVerif) return;
+		resendingVerif = true;
+		verifNote = '';
+		try {
+			const r = await api.auth.resendVerification({ email });
+			verifNote = r.message || 'If your email still needs verifying, a link is on its way.';
+		} catch (e: any) {
+			verifNote = e?.message || 'Could not send a verification email just now.';
+		} finally {
+			resendingVerif = false;
+		}
+	}
+
+	function useDifferentEmail() {
+		sent = false;
+		showEventPicker = false;
+		availableEvents = [];
+		linkNote = '';
+		verifNote = '';
+		error = '';
 	}
 
 	function goBack() {
@@ -45,17 +87,36 @@
 		</div>
 
 		<div class="surface p-6 sm:p-7">
-
 			{#if sent}
 				<div class="py-2 text-center">
-					<div class="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-brass/10 text-brass ring-1 ring-inset ring-brass/20">
+					<div class="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-inset ring-primary/20">
 						<svg class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.7"><path stroke-linecap="round" stroke-linejoin="round" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
 					</div>
 					<h2 class="mt-4 text-lg font-semibold text-foreground">Check your email</h2>
 					<p class="mt-1.5 text-sm leading-relaxed text-foreground-muted">
-						We sent a magic link to <span class="font-medium text-foreground text-mono">{email}</span>.
-						Click it to open your portal.
+						If <span class="font-medium text-foreground text-mono">{email}</span> is registered and verified,
+						a login link is on its way. It expires in 1&nbsp;hour.
 					</p>
+
+					<div class="mt-5">
+						<button onclick={resendLink} disabled={resendingLink} class="btn-secondary btn-sm w-full">
+							{resendingLink ? 'Resending…' : 'Resend login link'}
+						</button>
+						{#if linkNote}<p class="mt-2 text-xs text-foreground-muted">{linkNote}</p>{/if}
+					</div>
+
+					<div class="mt-5 rounded-xl border border-border bg-background-secondary/50 p-4 text-left">
+						<p class="text-xs font-medium text-foreground">Didn't get a login link?</p>
+						<p class="mt-1 text-xs leading-relaxed text-foreground-muted">
+							You'll only receive one once your email is verified. If you never verified it, resend the verification email first.
+						</p>
+						<button onclick={resendVerification} disabled={resendingVerif} class="btn-ghost btn-sm mt-2.5 -ml-2">
+							{resendingVerif ? 'Sending…' : 'Resend verification email'}
+						</button>
+						{#if verifNote}<p class="mt-1.5 text-xs text-primary">{verifNote}</p>{/if}
+					</div>
+
+					<button onclick={useDifferentEmail} class="btn-ghost btn-sm mt-4">← Use a different email</button>
 				</div>
 			{:else if showEventPicker}
 				<div class="space-y-4">

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { publicApi } from '$lib/api';
+	import { publicApi, api } from '$lib/api';
 	import { formatDate } from '$lib/utils';
 	import { onMount } from 'svelte';
 
@@ -85,6 +85,23 @@
 			};
 		} finally {
 			emailVerifying = false;
+		}
+	}
+
+	let resending = $state(false);
+	let resendNote = $state('');
+
+	async function resendVerification() {
+		if (resending || !token) return;
+		resending = true;
+		resendNote = '';
+		try {
+			const r = await api.auth.resendVerification({ token });
+			resendNote = r.message || 'A fresh verification link is on its way — check your inbox and spam.';
+		} catch (e: any) {
+			resendNote = e?.message || 'Could not resend just now — please try again shortly.';
+		} finally {
+			resending = false;
 		}
 	}
 
@@ -208,10 +225,21 @@
 								<svg class="w-5 h-5 text-destructive" fill="none" stroke="currentColor" viewBox="0 0 24 24">
 									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
 								</svg>
-								<span class="font-medium text-destructive">Verification Failed</span>
+								<span class="font-medium text-destructive">This link didn't work</span>
 							</div>
 							<p class="text-sm text-foreground-muted">
-								{emailResult.message}
+								{emailResult.message} Verification links expire after 24 hours — get a fresh one below.
+							</p>
+						</div>
+						<div class="mt-4">
+							<button onclick={resendVerification} disabled={resending} class="btn-primary w-full">
+								{resending ? 'Sending…' : 'Resend verification email'}
+							</button>
+							{#if resendNote}
+								<p class="mt-3 text-center text-sm text-foreground-muted">{resendNote}</p>
+							{/if}
+							<p class="mt-3 text-center text-xs text-foreground-muted">
+								We'll send a fresh link to the same email this one was for.
 							</p>
 						</div>
 					{/if}

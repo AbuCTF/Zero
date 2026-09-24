@@ -93,6 +93,12 @@ export const auth = {
 	verifyEmail: (token: string) =>
 		request<{ success: boolean }>(`/auth/verify-email?token=${token}`),
 
+	resendVerification: (payload: { email?: string; token?: string; event_slug?: string }) =>
+		request<{ success: boolean; message: string }>('/auth/resend-verification', {
+			method: 'POST',
+			body: JSON.stringify(payload)
+		}),
+
 	forgotPassword: (email: string) =>
 		request<{ success: boolean; message: string }>('/auth/forgot-password', {
 			method: 'POST',
