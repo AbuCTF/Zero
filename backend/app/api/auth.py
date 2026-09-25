@@ -367,7 +367,7 @@ async def get_me(
 @router.post(
     "/register",
     response_model=AuthResponse,
-    dependencies=[Depends(rate_limit("auth:register", (5, 60), (20, 3600)))],
+    dependencies=[Depends(rate_limit("auth:register", (30, 60), (400, 3600)))],
 )
 async def register(
     request: Request,
@@ -747,7 +747,7 @@ async def _send_verification_email(
 
 @router.get(
     "/discord/authorize",
-    dependencies=[Depends(rate_limit("auth:discord-authorize", (15, 60), (100, 3600)))],
+    dependencies=[Depends(rate_limit("auth:discord-authorize", (60, 60), (600, 3600)))],
 )
 async def discord_authorize(origin: str):
     """begin discord oauth for registration identity verification. origin is the lander origin that

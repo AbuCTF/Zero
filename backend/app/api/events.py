@@ -179,7 +179,7 @@ class RegistrationResponse(BaseModel):
 @router.post(
     "/{event_id}/register",
     response_model=RegistrationResponse,
-    dependencies=[Depends(rate_limit("events:register", (5, 60), (20, 3600)))],
+    dependencies=[Depends(rate_limit("events:register", (30, 60), (400, 3600)))],
 )
 async def register_for_event(
     event_id: UUID,
