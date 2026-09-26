@@ -470,7 +470,7 @@ class RateLimiter:
         for window_name, ttl in windows:
             key = f"ratelimit:{provider_id}:{window_name}"
             pipe.incr(key)
-            pipe.expire(key, ttl)
+            pipe.expire(key, ttl, nx=True)  # fixed window: ttl set once, not refreshed per send
         
         await pipe.execute()
     
