@@ -655,8 +655,16 @@ class CertificateVerifyResponse(BaseModel):
 class CampaignCreate(BaseModel):
     event_id: UUID
     template_id: UUID
-    name: str = Field(..., max_length=255)
+    name: str = Field(..., min_length=1, max_length=255)
     recipient_filter: Dict[str, Any] = {}  # e.g. {"type": "verified"}
+    scheduled_at: Optional[datetime] = None
+
+
+class CampaignUpdate(BaseModel):
+    event_id: Optional[UUID] = None
+    template_id: Optional[UUID] = None
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
+    recipient_filter: Optional[Dict[str, Any]] = None
     scheduled_at: Optional[datetime] = None
 
 

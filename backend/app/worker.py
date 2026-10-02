@@ -24,6 +24,7 @@ from app.models import (
     EmailTemplate,
     Event,
     Participant,
+    Prize,
     Session as UserSession,
 )
 from app.services.email import EmailMessage, EmailOrchestrator, render_email, render_subject
@@ -170,6 +171,14 @@ async def process_campaign_task(ctx: Dict[str, Any], campaign_id: str):
             query = query.where(Participant.email_verified == True)
         elif audience == "unverified":
             query = query.where(Participant.email_verified == False)
+        elif audience == "prize_winners":
+            query = query.where(
+                select(Prize.id).where(Prize.participant_id == Participant.id).exists()
+            )
+        elif audience == "no_prize":
+            query = query.where(
+                ~select(Prize.id).where(Prize.participant_id == Participant.id).exists()
+            )
 
         result = await db.execute(query)
         participants = result.scalars().all()

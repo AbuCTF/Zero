@@ -11,6 +11,8 @@
     
     let showModal = $state(false);
     let saving = $state(false);
+    let editingCampaignId = $state<string | null>(null);
+    let campaignRequestActive = false;
     
     let form = $state({
         name: '',
@@ -37,19 +39,41 @@
         cancelled: 'badge-secondary'
     };
 
-    onMount(async () => {
-        await Promise.all([loadCampaigns(), loadEvents(), loadTemplates()]);
+    onMount(() => {
+        void Promise.all([loadCampaigns(), loadEvents(), loadTemplates()]);
+
+        const refresh = () => {
+            if (document.visibilityState === 'visible') {
+                void loadCampaigns(true);
+            }
+        };
+        const interval = window.setInterval(refresh, 3000);
+        document.addEventListener('visibilitychange', refresh);
+
+        return () => {
+            window.clearInterval(interval);
+            document.removeEventListener('visibilitychange', refresh);
+        };
     });
 
-    async function loadCampaigns() {
-        loading = true;
-        error = '';
+    async function loadCampaigns(background = false) {
+        if (campaignRequestActive) return;
+        campaignRequestActive = true;
+        if (!background) {
+            loading = true;
+            error = '';
+        }
         try {
             campaigns = await api.admin.campaigns.list();
         } catch (e: any) {
-            error = e.message || 'Failed to load campaigns';
+            if (!background) {
+                error = e.message || 'Failed to load campaigns';
+            }
         } finally {
-            loading = false;
+            campaignRequestActive = false;
+            if (!background) {
+                loading = false;
+            }
         }
     }
 
@@ -71,6 +95,7 @@
     }
 
     function openAddModal() {
+        editingCampaignId = null;
         form = {
             name: '',
             event_id: '',
@@ -81,8 +106,36 @@
         showModal = true;
     }
 
+    function openEditModal(campaign: EmailCampaign) {
+        editingCampaignId = campaign.id;
+        form = {
+            name: campaign.name,
+            event_id: campaign.event_id,
+            template_id: '',
+            recipient_filter: (campaign.target_config?.type || campaign.target_group || 'all') as typeof form.recipient_filter,
+            scheduled_at: toLocalDateTime(campaign.scheduled_at)
+        };
+        showModal = true;
+    }
+
+    function closeModal() {
+        showModal = false;
+        editingCampaignId = null;
+    }
+
+    function toLocalDateTime(value?: string): string {
+        if (!value) return '';
+        const date = new Date(value);
+        const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+        return local.toISOString().slice(0, 16);
+    }
+
+    function scheduledAtValue(): string | null {
+        return form.scheduled_at ? new Date(form.scheduled_at).toISOString() : null;
+    }
+
     async function handleSubmit() {
-        if (!form.event_id || !form.template_id) {
+        if (!form.event_id || (!editingCampaignId && !form.template_id)) {
             error = 'Please select an event and template';
             return;
         }
@@ -90,17 +143,27 @@
         saving = true;
         error = '';
         try {
-            await api.admin.campaigns.create({
-                name: form.name,
-                event_id: String(form.event_id),
-                template_id: String(form.template_id),
-                recipient_filter: { type: form.recipient_filter },
-                scheduled_at: form.scheduled_at || undefined
-            });
-            showModal = false;
+            if (editingCampaignId) {
+                await api.admin.campaigns.update(editingCampaignId, {
+                    name: form.name,
+                    event_id: String(form.event_id),
+                    ...(form.template_id ? { template_id: String(form.template_id) } : {}),
+                    recipient_filter: { type: form.recipient_filter },
+                    scheduled_at: scheduledAtValue()
+                });
+            } else {
+                await api.admin.campaigns.create({
+                    name: form.name,
+                    event_id: String(form.event_id),
+                    template_id: String(form.template_id),
+                    recipient_filter: { type: form.recipient_filter },
+                    scheduled_at: scheduledAtValue() || undefined
+                });
+            }
+            closeModal();
             await loadCampaigns();
         } catch (e: any) {
-            error = e.message || 'Failed to create campaign';
+            error = e.message || `Failed to ${editingCampaignId ? 'update' : 'create'} campaign`;
         } finally {
             saving = false;
         }
@@ -209,13 +272,21 @@
                             </div>
                         </div>
                         <div class="flex items-center gap-2">
-                            {#if campaign.status === 'draft' || campaign.status === 'scheduled'}
+                            {#if campaign.status === 'draft'}
+                                <button
+                                    onclick={() => openEditModal(campaign)}
+                                    class="btn btn-ghost btn-sm"
+                                >
+                                    Edit
+                                </button>
                                 <button
                                     onclick={() => startCampaign(campaign.id)}
                                     class="btn btn-primary btn-sm"
                                 >
                                     Start
                                 </button>
+                            {:else if campaign.status === 'scheduled'}
+                                <span class="text-xs text-foreground-muted px-2">Queued</span>
                             {/if}
                             {#if campaign.status === 'sending'}
                                 <button
@@ -291,8 +362,8 @@
     <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
         <div class="bg-card rounded-xl shadow-xl w-full max-w-lg">
             <div class="px-6 py-4 border-b border-border flex items-center justify-between">
-                <h2 class="text-lg font-semibold">New Campaign</h2>
-                <button onclick={() => showModal = false} class="btn btn-ghost btn-sm" aria-label="Close">
+                <h2 class="text-lg font-semibold">{editingCampaignId ? 'Edit Campaign' : 'New Campaign'}</h2>
+                <button onclick={closeModal} class="btn btn-ghost btn-sm" aria-label="Close">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
                     </svg>
@@ -330,8 +401,8 @@
                     <label for="template" class="block text-sm font-medium mb-1.5">
                         Email Template
                     </label>
-                    <select id="template" bind:value={form.template_id} class="input" required>
-                        <option value="">Select template...</option>
+                    <select id="template" bind:value={form.template_id} class="input" required={!editingCampaignId}>
+                        <option value="">{editingCampaignId ? 'Keep current template' : 'Select template...'}</option>
                         {#each templates as template}
                             <option value={template.id}>{template.name}</option>
                         {/each}
@@ -366,7 +437,7 @@
             </form>
 
             <div class="px-6 py-4 border-t border-border flex justify-end gap-3">
-                <button onclick={() => showModal = false} class="btn btn-ghost">
+                <button onclick={closeModal} class="btn btn-ghost">
                     Cancel
                 </button>
                 <button 
@@ -374,7 +445,7 @@
                     disabled={saving}
                     class="btn btn-primary"
                 >
-                    {saving ? 'Creating...' : 'Create Campaign'}
+                    {saving ? (editingCampaignId ? 'Saving...' : 'Creating...') : (editingCampaignId ? 'Save' : 'Create Campaign')}
                 </button>
             </div>
         </div>

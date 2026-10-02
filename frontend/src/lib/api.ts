@@ -378,12 +378,18 @@ export const admin = {
 		list: (eventId?: string) => {
 			let url = '/admin/campaigns';
 			if (eventId) url += `?event_id=${eventId}`;
-			return request<EmailCampaign[]>(url);
+			return request<EmailCampaign[]>(url, { cache: 'no-store' });
 		},
 
 		create: (data: CampaignCreate) =>
 			request<EmailCampaign>('/admin/campaigns', {
 				method: 'POST',
+				body: JSON.stringify(data)
+			}),
+
+		update: (id: string, data: CampaignUpdate) =>
+			request<EmailCampaign>(`/admin/campaigns/${id}`, {
+				method: 'PATCH',
 				body: JSON.stringify(data)
 			}),
 
@@ -821,6 +827,14 @@ export interface CampaignCreate {
 	name: string;
 	recipient_filter?: Record<string, unknown>;
 	scheduled_at?: string;
+}
+
+export interface CampaignUpdate {
+	event_id?: string;
+	template_id?: string;
+	name?: string;
+	recipient_filter?: Record<string, unknown>;
+	scheduled_at?: string | null;
 }
 
 export const api = {

@@ -47,6 +47,7 @@ from app.schemas import (
     BaseResponse,
     CampaignCreate,
     CampaignResponse,
+    CampaignUpdate,
     CertificateTemplateCreate,
     CertificatePreviewRequest,
     CertificateTemplateResponse,
@@ -89,6 +90,37 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 settings = get_settings()
+
+CAMPAIGN_TARGET_GROUPS = {
+    "all",
+    "verified",
+    "unverified",
+    "prize_winners",
+    "no_prize",
+}
+
+
+def _campaign_target(recipient_filter: dict) -> str:
+    target = str(recipient_filter.get("type", "all"))
+    if target not in CAMPAIGN_TARGET_GROUPS:
+        raise HTTPException(status_code=400, detail="Unsupported recipient filter")
+    return target
+
+
+def _filter_campaign_participants(query, target: str):
+    if target == "verified":
+        return query.where(Participant.email_verified == True)
+    if target == "unverified":
+        return query.where(Participant.email_verified == False)
+    if target == "prize_winners":
+        return query.where(
+            select(Prize.id).where(Prize.participant_id == Participant.id).exists()
+        )
+    if target == "no_prize":
+        return query.where(
+            ~select(Prize.id).where(Prize.participant_id == Participant.id).exists()
+        )
+    return query
 
 
 def get_template_background_url(template_file: str) -> Optional[str]:
@@ -2775,6 +2807,7 @@ async def create_campaign(
         raise HTTPException(status_code=404, detail="Template not found")
 
     recipient_filter = data.recipient_filter or {}
+    target_group = _campaign_target(recipient_filter)
 
     campaign = EmailCampaign(
         event_id=data.event_id,
@@ -2782,7 +2815,7 @@ async def create_campaign(
         subject=template.subject,
         body_html=template.body_html,
         body_text=template.body_text,
-        target_group=recipient_filter.get("type", "all"),
+        target_group=target_group,
         target_config=recipient_filter,
         scheduled_for=data.scheduled_at,
         created_by=user.id,
@@ -2794,6 +2827,61 @@ async def create_campaign(
     return _campaign_response(campaign)
 
 
+@router.patch("/campaigns/{campaign_id}", response_model=CampaignResponse)
+async def update_campaign(
+    campaign_id: UUID,
+    data: CampaignUpdate,
+    user: User = Depends(require_organizer),
+    db: AsyncSession = Depends(get_session),
+):
+    result = await db.execute(
+        select(EmailCampaign)
+        .where(EmailCampaign.id == campaign_id)
+        .with_for_update()
+    )
+    campaign = result.scalar_one_or_none()
+
+    if not campaign:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    if campaign.status != CampaignStatus.DRAFT:
+        raise HTTPException(
+            status_code=409,
+            detail="Only draft campaigns can be edited",
+        )
+
+    fields = data.model_fields_set
+
+    if "event_id" in fields and data.event_id != campaign.event_id:
+        result = await db.execute(select(Event).where(Event.id == data.event_id))
+        if not result.scalar_one_or_none():
+            raise HTTPException(status_code=404, detail="Event not found")
+        campaign.event_id = data.event_id
+
+    if "template_id" in fields and data.template_id is not None:
+        result = await db.execute(
+            select(EmailTemplate).where(EmailTemplate.id == data.template_id)
+        )
+        template = result.scalar_one_or_none()
+        if not template:
+            raise HTTPException(status_code=404, detail="Template not found")
+        campaign.subject = template.subject
+        campaign.body_html = template.body_html
+        campaign.body_text = template.body_text
+
+    if "name" in fields and data.name is not None:
+        campaign.name = data.name
+
+    if "recipient_filter" in fields and data.recipient_filter is not None:
+        campaign.target_group = _campaign_target(data.recipient_filter)
+        campaign.target_config = data.recipient_filter
+
+    if "scheduled_at" in fields:
+        campaign.scheduled_for = data.scheduled_at
+
+    await db.flush()
+    return _campaign_response(campaign)
+
+
 @router.post("/campaigns/{campaign_id}/start", response_model=BaseResponse)
 async def start_campaign(
     campaign_id: UUID,
@@ -2802,7 +2890,9 @@ async def start_campaign(
 ):
     """start a campaign: mark it scheduled so the process_pending_campaigns cron picks it up."""
     result = await db.execute(
-        select(EmailCampaign).where(EmailCampaign.id == campaign_id)
+        select(EmailCampaign)
+        .where(EmailCampaign.id == campaign_id)
+        .with_for_update()
     )
     campaign = result.scalar_one_or_none()
     
@@ -2821,10 +2911,10 @@ async def start_campaign(
         query = query.where(Participant.event_id == campaign.event_id)
 
     criteria = campaign.target_config or {}
-    if criteria.get("type") == "verified":
-        query = query.where(Participant.email_verified == True)
-    if criteria.get("type") == "unverified":
-        query = query.where(Participant.email_verified == False)
+    query = _filter_campaign_participants(
+        query,
+        _campaign_target(criteria),
+    )
 
     total = await db.scalar(query) or 0
 
@@ -2932,12 +3022,19 @@ async def delete_campaign(
     db: AsyncSession = Depends(get_session),
 ):
     result = await db.execute(
-        select(EmailCampaign).where(EmailCampaign.id == campaign_id)
+        select(EmailCampaign)
+        .where(EmailCampaign.id == campaign_id)
+        .with_for_update()
     )
     campaign = result.scalar_one_or_none()
 
     if not campaign:
         raise HTTPException(status_code=404, detail="Campaign not found")
+    if campaign.status != CampaignStatus.DRAFT:
+        raise HTTPException(
+            status_code=409,
+            detail="Only draft campaigns can be deleted",
+        )
 
     await db.delete(campaign)
     await db.flush()
