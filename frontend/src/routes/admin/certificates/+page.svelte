@@ -485,7 +485,7 @@
                                     onclick={() => openTestPreview(template)}
                                     class="btn btn-ghost btn-sm"
                                 >
-                                    Test output
+                                    Preview
                                 </button>
                                 {#if template.event_id && template.is_default}
                                     <button
@@ -926,7 +926,7 @@
         <div class="bg-card rounded-xl shadow-xl w-full max-w-5xl max-h-[94vh] overflow-hidden flex flex-col">
             <div class="px-6 py-4 border-b border-border flex items-center justify-between">
                 <div>
-                    <h2 class="text-lg font-semibold">Test certificate output</h2>
+                    <h2 class="text-lg font-semibold">Preview</h2>
                     <p class="text-sm text-foreground-muted mt-0.5">Rendered by the same generator used for participant downloads.</p>
                 </div>
                 <button onclick={closeTestPreview} class="btn btn-ghost btn-sm" aria-label="Close">✕</button>
