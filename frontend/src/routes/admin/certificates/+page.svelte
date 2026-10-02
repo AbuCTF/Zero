@@ -91,6 +91,10 @@
     let testName = $state('Sample Participant');
     let testPreviewUrl = $state<string | null>(null);
     let testRendering = $state(false);
+    let showAlignmentGrid = $state(true);
+    let snapStep = $state(0.25);
+    let guideX = $state(50);
+    let guideY = $state(50);
 
     const MAX_CERTIFICATE_NAME_LENGTH = 80;
 
@@ -254,8 +258,10 @@
     function moveDesignerItem(event: PointerEvent) {
         if (!dragging || !previewCanvas) return;
         const bounds = previewCanvas.getBoundingClientRect();
-        const x = Math.max(0, Math.min(100, ((event.clientX - bounds.left) / bounds.width) * 100));
-        const y = Math.max(0, Math.min(100, ((event.clientY - bounds.top) / bounds.height) * 100));
+        const rawX = Math.max(0, Math.min(100, ((event.clientX - bounds.left) / bounds.width) * 100));
+        const rawY = Math.max(0, Math.min(100, ((event.clientY - bounds.top) / bounds.height) * 100));
+        const x = Number((Math.round(rawX / snapStep) * snapStep).toFixed(2));
+        const y = Number((Math.round(rawY / snapStep) * snapStep).toFixed(2));
         if (dragging.kind === 'qr') {
             if (form.qr_zone) {
                 form.qr_zone.x = Number(x.toFixed(2));
@@ -264,6 +270,25 @@
             return;
         }
         updateZone(dragging.id, { x: Number(x.toFixed(2)), y: Number(y.toFixed(2)) });
+    }
+
+    function alignSelectedZone(axis: 'x' | 'y') {
+        if (!selectedZone) return;
+        updateZone(selectedZone, axis === 'x' ? { x: guideX } : { y: guideY });
+    }
+
+    function nudgeZone(event: KeyboardEvent, id: string) {
+        if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
+        event.preventDefault();
+        const zone = form.text_zones.find((item) => item.id === id);
+        if (!zone) return;
+        const amount = event.shiftKey ? 1 : 0.1;
+        const updates: Partial<Zone> = {};
+        if (event.key === 'ArrowLeft') updates.x = Math.max(0, Number((zone.x - amount).toFixed(2)));
+        if (event.key === 'ArrowRight') updates.x = Math.min(100, Number((zone.x + amount).toFixed(2)));
+        if (event.key === 'ArrowUp') updates.y = Math.max(0, Number((zone.y - amount).toFixed(2)));
+        if (event.key === 'ArrowDown') updates.y = Math.min(100, Number((zone.y + amount).toFixed(2)));
+        updateZone(id, updates);
     }
 
     function zoneTransform(alignment: Zone['alignment']): string {
@@ -684,6 +709,7 @@
                                                             class="input text-sm py-1"
                                                             min="0"
                                                             max="100"
+                                                            step="0.1"
                                                         />
                                                     </div>
                                                     <div>
@@ -695,6 +721,7 @@
                                                             class="input text-sm py-1"
                                                             min="0"
                                                             max="100"
+                                                            step="0.1"
                                                         />
                                                     </div>
                                                     <div>
@@ -785,14 +812,45 @@
                     </div>
 
                     <div class="xl:col-span-7">
-                        <div class="flex items-center justify-between mb-3">
-                            <h3 class="text-sm font-medium">Live preview</h3>
-                            <span class="text-xs text-foreground-muted">Drag a field or QR to place it</span>
+                        <div class="mb-3 space-y-3">
+                            <div class="flex items-center justify-between">
+                                <h3 class="text-sm font-medium">Layout preview</h3>
+                                <span class="text-xs text-foreground-muted">Drag, use coordinates, or nudge with arrow keys</span>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2 rounded-lg border border-border bg-muted/30 p-3 sm:grid-cols-4">
+                                <label class="flex items-center gap-2 text-xs font-medium">
+                                    <input type="checkbox" bind:checked={showAlignmentGrid} />
+                                    Grid and guides
+                                </label>
+                                <label class="text-xs text-foreground-muted">
+                                    Snap
+                                    <select bind:value={snapStep} class="input mt-1 py-1 text-sm">
+                                        <option value={0.1}>0.1%</option>
+                                        <option value={0.25}>0.25%</option>
+                                        <option value={0.5}>0.5%</option>
+                                        <option value={1}>1%</option>
+                                    </select>
+                                </label>
+                                <label class="text-xs text-foreground-muted">
+                                    Vertical guide X
+                                    <div class="mt-1 flex gap-1">
+                                        <input type="number" bind:value={guideX} min="0" max="100" step="0.1" class="input py-1 text-sm" />
+                                        <button type="button" class="btn btn-secondary btn-sm" onclick={() => alignSelectedZone('x')} disabled={!selectedZone}>Align</button>
+                                    </div>
+                                </label>
+                                <label class="text-xs text-foreground-muted">
+                                    Horizontal guide Y
+                                    <div class="mt-1 flex gap-1">
+                                        <input type="number" bind:value={guideY} min="0" max="100" step="0.1" class="input py-1 text-sm" />
+                                        <button type="button" class="btn btn-secondary btn-sm" onclick={() => alignSelectedZone('y')} disabled={!selectedZone}>Align</button>
+                                    </div>
+                                </label>
+                            </div>
                         </div>
                         <div 
                             bind:this={previewCanvas}
                             class="certificate-canvas relative bg-muted rounded-lg overflow-hidden border border-border select-none"
-                            style="aspect-ratio: {form.width}/{form.height}; container-type: inline-size;"
+                            style="aspect-ratio: {form.width}/{form.height}; container-type: inline-size; background-image: {showAlignmentGrid ? 'linear-gradient(to right, color-mix(in srgb, currentColor 12%, transparent) 1px, transparent 1px), linear-gradient(to bottom, color-mix(in srgb, currentColor 12%, transparent) 1px, transparent 1px)' : 'none'}; background-size: 5% 5%;"
                         >
                             {#if previewImage}
                                 <img 
@@ -806,6 +864,7 @@
                                         class="absolute cursor-move whitespace-nowrap border border-transparent bg-transparent p-0 leading-tight {selectedZone === zone.id ? 'outline outline-2 outline-primary outline-offset-2' : 'hover:outline hover:outline-1 hover:outline-primary/70'}"
                                         style="left: {zone.x}%; top: {zone.y}%; width: {zone.width}%; transform: {zoneTransform(zone.alignment)}; font-size: {zone.font_size / form.width * 100}cqw; color: {zone.color}; font-family: {zone.font_family}; text-align: {zone.alignment};"
                                         onpointerdown={(event) => beginTextDrag(event, zone.id)}
+                                        onkeydown={(event) => nudgeZone(event, zone.id)}
                                         aria-label="Move {availableFields.find((field) => field.value === zone.field)?.label || zone.field}"
                                     >
                                         {sampleValue(zone.field)}
@@ -821,6 +880,10 @@
                                     >
                                         QR
                                     </button>
+                                {/if}
+                                {#if showAlignmentGrid}
+                                    <div class="pointer-events-none absolute inset-y-0 border-l border-primary/80" style="left: {guideX}%"></div>
+                                    <div class="pointer-events-none absolute inset-x-0 border-t border-primary/80" style="top: {guideY}%"></div>
                                 {/if}
                             {:else}
                                 <div class="absolute inset-0 flex items-center justify-center text-foreground-muted">
