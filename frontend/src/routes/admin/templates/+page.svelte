@@ -26,7 +26,7 @@
         { value: 'reminder', label: 'Event Reminder' },
         { value: 'results', label: 'Results Announcement' },
         { value: 'prize', label: 'Prize Notification' },
-        { value: 'certificate', label: 'Certificate Delivery' },
+        { value: 'certificate_available', label: 'Certificate Available' },
         { value: 'custom', label: 'Custom' }
     ];
 

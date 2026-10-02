@@ -1,6 +1,8 @@
 """admin api endpoints: events, participants, email providers/templates, vouchers, prize rules, certificate templates, campaigns, analytics."""
 
 import csv
+import base64
+import binascii
 import io
 import logging
 import secrets
@@ -75,7 +77,12 @@ from app.schemas import (
 )
 from app.services.email import EmailMessage, EmailOrchestrator, render_email, render_subject
 from app.utils.net import validate_public_url
-from app.utils.security import decrypt_data, encrypt_data, hash_password
+from app.utils.security import (
+    decrypt_data,
+    encrypt_data,
+    generate_random_certificate_code,
+    hash_password,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +102,36 @@ def get_template_background_url(template_file: str) -> Optional[str]:
     if not template_file.startswith("/"):
         return f"/uploads/{template_file}"
     return template_file
+
+
+def store_certificate_background(data_url: str, filename: str) -> str:
+    from PIL import Image
+
+    try:
+        header, encoded = data_url.split(",", 1)
+        if header not in {"data:image/png;base64", "data:image/jpeg;base64"}:
+            raise ValueError
+        content = base64.b64decode(encoded, validate=True)
+    except (ValueError, binascii.Error):
+        raise HTTPException(status_code=400, detail="Invalid certificate image")
+
+    if len(content) > settings.max_upload_size_bytes:
+        raise HTTPException(status_code=413, detail="Certificate image is too large")
+
+    try:
+        with Image.open(io.BytesIO(content)) as image:
+            image.verify()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Certificate image is invalid")
+
+    upload_dir = (Path(settings.upload_dir) / "certificate-templates").resolve()
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    extension = "jpg" if header == "data:image/jpeg;base64" else "png"
+    destination = (upload_dir / f"{filename}.{extension}").resolve()
+    if destination.parent != upload_dir:
+        raise HTTPException(status_code=400, detail="Invalid certificate image path")
+    destination.write_bytes(content)
+    return str(destination)
 
 
 @router.get("/stats", response_model=DashboardStats)
@@ -776,10 +813,11 @@ async def bulk_update_participant_ranks(
 async def generate_certificates_for_event(
     event_id: UUID,
     regenerate: bool = False,
+    render: bool = False,
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
 ):
-    """create certificate records for all participants; regenerate=True recreates existing, rank optional, no finalize required."""
+    """create certificate records for verified participants."""
     result = await db.execute(select(Event).where(Event.id == event_id))
     event = result.scalar_one_or_none()
     
@@ -801,25 +839,43 @@ async def generate_certificates_for_event(
         )
     
     result = await db.execute(
-        select(Participant).where(Participant.event_id == event_id)
+        select(Participant).where(
+            Participant.event_id == event_id,
+            Participant.email_verified == True,
+        )
     )
     participants = result.scalars().all()
 
+    participant_ids = [participant.id for participant in participants]
+    existing_by_participant = {}
+    if participant_ids:
+        result = await db.execute(
+            select(Certificate).where(
+                Certificate.template_id == template.id,
+                Certificate.participant_id.in_(participant_ids),
+            )
+        )
+        existing_by_participant = {
+            certificate.participant_id: certificate
+            for certificate in result.scalars().all()
+        }
+
     created = 0
+    regenerated = 0
     skipped = 0
 
     for participant in participants:
-        result = await db.execute(
-            select(Certificate).where(Certificate.participant_id == participant.id)
-        )
-        existing = result.scalar_one_or_none()
+        existing = existing_by_participant.get(participant.id)
         
         if existing and not regenerate:
             skipped += 1
             continue
         
         if existing and regenerate:
-            await db.delete(existing)
+            existing.file_path = None
+            existing.generated_at = None
+            regenerated += 1
+            continue
 
         cert = Certificate(
             participant_id=participant.id,
@@ -827,39 +883,43 @@ async def generate_certificates_for_event(
             display_name=participant.name or participant.username or participant.email.split("@")[0],
             team_name=None,
             rank=participant.final_rank,
-            verification_code=secrets.token_urlsafe(16),
+            verification_code=generate_random_certificate_code(template.certificate_prefix),
         )
         db.add(cert)
         created += 1
     
     await db.flush()
     
-    try:
-        from arq import create_pool
-        from arq.connections import RedisSettings
-        from urllib.parse import urlparse
+    if render:
+        try:
+            from urllib.parse import urlparse
 
-        parsed = urlparse(settings.redis_url)
-        redis_settings = RedisSettings(
-            host=parsed.hostname or "localhost",
-            port=parsed.port or 6379,
-            password=parsed.password,
-            database=int((parsed.path or "/0").lstrip("/") or 0),
-        )
-        pool = await create_pool(redis_settings)
-        await pool.enqueue_job(
-            "bulk_generate_certificates_task",
-            str(event_id),
-            "png",
-        )
-        await pool.close()
-    except Exception:
-        # best-effort: don't fail if redis is unavailable
-        pass
+            from arq import create_pool
+            from arq.connections import RedisSettings
+
+            parsed = urlparse(settings.redis_url)
+            redis_settings = RedisSettings(
+                host=parsed.hostname or "localhost",
+                port=parsed.port or 6379,
+                password=parsed.password,
+                database=int((parsed.path or "/0").lstrip("/") or 0),
+            )
+            pool = await create_pool(redis_settings)
+            await pool.enqueue_job(
+                "bulk_generate_certificates_task",
+                str(event_id),
+                template.output_format,
+            )
+            await pool.close()
+        except Exception:
+            logger.exception("Failed to queue bulk certificate rendering")
     
     return BaseResponse(
         success=True,
-        message=f"Created {created} certificates, skipped {skipped} existing. Rendering queued.",
+        message=(
+            f"Issued {created}, refreshed {regenerated}, kept {skipped} existing certificates. "
+            + ("Rendering queued." if render else "Certificates render securely on first download.")
+        ),
     )
 
 
@@ -2117,6 +2177,7 @@ async def list_certificate_templates(
             text_zones=t.text_zones,
             qr_zone=t.qr_zone,
             output_format=t.output_format,
+            certificate_prefix=t.certificate_prefix,
             rank_from=t.rank_from,
             rank_to=t.rank_to,
             is_active=t.is_active,
@@ -2133,34 +2194,15 @@ async def create_certificate_template(
     user: User = Depends(require_organizer),
     db: AsyncSession = Depends(get_session),
 ):
-    import base64
-    from pathlib import Path
-    
     template_file = ""
     
     if data.background_image:
         if data.background_image.startswith("data:"):
-            try:
-                header, b64_data = data.background_image.split(",", 1)
-                ext = "png"
-                if "jpeg" in header or "jpg" in header:
-                    ext = "jpg"
-                elif "png" in header:
-                    ext = "png"
-                
-                image_data = base64.b64decode(b64_data)
-                
-                upload_dir = Path(settings.upload_dir) / "certificate-templates"
-                upload_dir.mkdir(parents=True, exist_ok=True)
-                
-                import uuid
-                filename = f"{uuid.uuid4()}.{ext}"
-                filepath = upload_dir / filename
-                filepath.write_bytes(image_data)
-                
-                template_file = str(filepath)
-            except Exception:
-                pass  # fall through to empty template_file
+            import uuid
+            template_file = store_certificate_background(
+                data.background_image,
+                str(uuid.uuid4()),
+            )
         elif data.background_image.startswith("/uploads/"):
             relative_path = data.background_image[len("/uploads/"):]
             template_file = str(Path(settings.upload_dir) / relative_path)
@@ -2177,6 +2219,7 @@ async def create_certificate_template(
         text_zones=data.text_zones or [],
         qr_zone=data.qr_zone,
         output_format=data.output_format,
+        certificate_prefix=data.certificate_prefix.upper(),
         rank_from=data.rank_from,
         rank_to=data.rank_to,
         is_default=data.is_default,
@@ -2196,28 +2239,6 @@ async def create_certificate_template(
     db.add(template)
     await db.flush()
 
-    # auto-generate certificates for event participants when marked default (skip global templates)
-    if data.is_default and data.event_id:
-        result = await db.execute(
-            select(Participant).where(Participant.event_id == data.event_id)
-        )
-        participants = result.scalars().all()
-        for participant in participants:
-            cert_result = await db.execute(
-                select(Certificate).where(Certificate.participant_id == participant.id)
-            )
-            existing_cert = cert_result.scalar_one_or_none()
-            if not existing_cert:
-                cert = Certificate(
-                    participant_id=participant.id,
-                    template_id=template.id,
-                    display_name=participant.name or participant.username or participant.email.split("@")[0],
-                    rank=participant.final_rank,
-                    verification_code=secrets.token_urlsafe(16),
-                )
-                db.add(cert)
-        await db.flush()
-    
     return CertificateTemplateResponse(
         id=template.id,
         event_id=template.event_id,
@@ -2230,6 +2251,7 @@ async def create_certificate_template(
         text_zones=template.text_zones,
         qr_zone=template.qr_zone,
         output_format=template.output_format,
+        certificate_prefix=template.certificate_prefix,
         rank_from=template.rank_from,
         rank_to=template.rank_to,
         is_active=template.is_active,
@@ -2264,6 +2286,7 @@ async def get_certificate_template(
         text_zones=template.text_zones or [],
         qr_zone=template.qr_zone,
         output_format=template.output_format,
+        certificate_prefix=template.certificate_prefix,
         rank_from=template.rank_from,
         rank_to=template.rank_to,
         is_active=template.is_active,
@@ -2327,6 +2350,7 @@ async def upload_certificate_template_image(
         text_zones=template.text_zones or [],
         qr_zone=template.qr_zone,
         output_format=template.output_format,
+        certificate_prefix=template.certificate_prefix,
         rank_from=template.rank_from,
         rank_to=template.rank_to,
         is_active=template.is_active,
@@ -2349,6 +2373,19 @@ async def update_certificate_template(
     
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
+
+    if "event_id" in data.model_fields_set and data.event_id != template.event_id:
+        result = await db.execute(
+            select(func.count(Certificate.id)).where(
+                Certificate.template_id == template.id
+            )
+        )
+        if result.scalar_one() > 0:
+            raise HTTPException(
+                status_code=409,
+                detail="A template with issued certificates cannot be moved to another event",
+            )
+        template.event_id = data.event_id
     
     if data.name is not None:
         template.name = data.name
@@ -2360,10 +2397,12 @@ async def update_certificate_template(
         template.height = data.height
     if data.text_zones is not None:
         template.text_zones = data.text_zones
-    if data.qr_zone is not None:
+    if "qr_zone" in data.model_fields_set:
         template.qr_zone = data.qr_zone
     if data.output_format is not None:
         template.output_format = data.output_format
+    if data.certificate_prefix is not None:
+        template.certificate_prefix = data.certificate_prefix.upper()
     if data.rank_from is not None:
         template.rank_from = data.rank_from
     if data.rank_to is not None:
@@ -2383,51 +2422,13 @@ async def update_certificate_template(
                 existing.is_default = False
         template.is_default = data.is_default
         
-        # marking default auto-generates certificates for participants
-        if data.is_default:
-            result = await db.execute(
-                select(Participant).where(Participant.event_id == template.event_id)
-            )
-            participants = result.scalars().all()
-            
-            for participant in participants:
-                cert_result = await db.execute(
-                    select(Certificate).where(Certificate.participant_id == participant.id)
-                )
-                if not cert_result.scalar_one_or_none():
-                    cert = Certificate(
-                        participant_id=participant.id,
-                        template_id=template.id,
-                        display_name=participant.name or participant.username or participant.email.split("@")[0],
-                        team_name=None,
-                        rank=participant.final_rank,
-                        verification_code=secrets.token_urlsafe(16),
-                    )
-                    db.add(cert)
-    
+
     if data.background_image is not None:
-        import base64
-        from pathlib import Path
-        
         if data.background_image.startswith("data:"):
-            try:
-                header, b64_data = data.background_image.split(",", 1)
-                ext = "png"
-                if "jpeg" in header or "jpg" in header:
-                    ext = "jpg"
-                
-                image_data = base64.b64decode(b64_data)
-                
-                upload_dir = Path(settings.upload_dir) / "certificate-templates"
-                upload_dir.mkdir(parents=True, exist_ok=True)
-                
-                filename = f"{template_id}.{ext}"
-                filepath = upload_dir / filename
-                filepath.write_bytes(image_data)
-                
-                template.template_file = str(filepath)
-            except Exception:
-                pass
+            template.template_file = store_certificate_background(
+                data.background_image,
+                str(template_id),
+            )
         elif data.background_image.startswith("/uploads/"):
             relative_path = data.background_image[len("/uploads/"):]
             template.template_file = str(Path(settings.upload_dir) / relative_path)
@@ -2448,6 +2449,7 @@ async def update_certificate_template(
         text_zones=template.text_zones,
         qr_zone=template.qr_zone,
         output_format=template.output_format,
+        certificate_prefix=template.certificate_prefix,
         rank_from=template.rank_from,
         rank_to=template.rank_to,
         is_active=template.is_active,
@@ -2958,8 +2960,15 @@ async def finalize_event(
     default_template = result.scalar_one_or_none()
 
     for participant in all_participants:
+        if not default_template:
+            break
+        if not participant.email_verified:
+            continue
         result = await db.execute(
-            select(Certificate).where(Certificate.participant_id == participant.id)
+            select(Certificate).where(
+                Certificate.participant_id == participant.id,
+                Certificate.template_id == default_template.id,
+            )
         )
         if not result.scalar_one_or_none() and default_template:
             cert = Certificate(
@@ -2968,7 +2977,7 @@ async def finalize_event(
                 display_name=participant.name or participant.username or participant.email.split("@")[0],
                 team_name=None,
                 rank=participant.final_rank,
-                verification_code=secrets.token_urlsafe(16),
+                verification_code=generate_random_certificate_code(default_template.certificate_prefix),
             )
             db.add(cert)
             certs_created += 1

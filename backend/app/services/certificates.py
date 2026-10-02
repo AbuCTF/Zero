@@ -1,6 +1,7 @@
 """generate pdf/png certificates from templates with text zones and qr codes."""
 
-import io
+import re
+import tempfile
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -9,12 +10,8 @@ from uuid import UUID
 
 import qrcode
 from PIL import Image, ImageDraw, ImageFont
-from reportlab.lib.utils import ImageReader
-from reportlab.pdfgen import canvas
 
 from app.config import get_settings
-from app.utils.security import generate_certificate_code
-
 settings = get_settings()
 
 
@@ -46,6 +43,7 @@ class QRZone:
 class CertificateData:
     participant_id: UUID
     display_name: str
+    verification_code: str
     team_name: Optional[str] = None
     rank: Optional[int] = None
     score: Optional[float] = None
@@ -96,20 +94,43 @@ class CertificateGenerator:
         hex_color = hex_color.lstrip("#")
         return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
     
-    def generate_verification_code(
+    def _font(self, font_family: str, size: int) -> ImageFont.FreeTypeFont:
+        font_path = self._get_font_path(font_family)
+        candidates = [
+            font_path,
+            "/usr/local/lib/python3.11/site-packages/reportlab/fonts/Vera.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/TTF/DejaVuSans.ttf",
+        ]
+        for candidate in candidates:
+            if not candidate:
+                continue
+            try:
+                return ImageFont.truetype(candidate, size)
+            except (OSError, ValueError):
+                continue
+        return ImageFont.load_default()
+
+    def _fit_font(
         self,
-        participant_id: UUID,
-        cert_type: str = "participation",
-        issued_at: datetime = None,
-    ) -> str:
-        if issued_at is None:
-            issued_at = datetime.utcnow()
-        
-        return generate_certificate_code(
-            str(participant_id),
-            cert_type,
-            issued_at,
-        )
+        draw: ImageDraw.ImageDraw,
+        text: str,
+        font_family: str,
+        requested_size: int,
+        max_width: int,
+    ) -> ImageFont.FreeTypeFont:
+        size = max(requested_size, 8)
+        font = self._font(font_family, size)
+        while size > 8 and draw.textlength(text, font=font) > max_width:
+            size -= 1
+            font = self._font(font_family, size)
+        return font
+
+    def _safe_output_path(self, verification_code: str, suffix: str) -> Path:
+        filename = re.sub(r"[^A-Za-z0-9_-]", "", verification_code)
+        if not filename:
+            raise ValueError("Invalid verification code")
+        return self.output_dir / f"{filename}.{suffix}"
     
     def _create_qr_code(
         self,
@@ -143,11 +164,7 @@ class CertificateGenerator:
             
             draw = ImageDraw.Draw(template)
             
-            verification_code = self.generate_verification_code(
-                data.participant_id,
-                "participation" if not data.rank or data.rank > 15 else "winner",
-                data.issued_at,
-            )
+            verification_code = data.verification_code
             
             # field values under both naming conventions
             field_values = {
@@ -159,6 +176,7 @@ class CertificateGenerator:
                 "event": data.event_name,
                 "date": data.issued_at.strftime("%B %d, %Y"),
                 "verification_code": verification_code,
+                "verification_suffix": verification_code.partition("-")[2],
                 # full names (frontend uses these)
                 "participant_name": data.display_name,
                 "team_name": data.team_name or "",
@@ -179,29 +197,13 @@ class CertificateGenerator:
                     y = int(zone.y)
                     max_width = int(zone.width)
                 
-                font_path = self._get_font_path(zone.font_family)
-                font = None
-                
-                if font_path:
-                    font = ImageFont.truetype(font_path, zone.font_size)
-                else:
-                    # fallback fonts (reportlab's vera.ttf is reliable)
-                    fallback_fonts = [
-                        "/usr/local/lib/python3.11/site-packages/reportlab/fonts/Vera.ttf",
-                        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-                        "arial.ttf",
-                        "/usr/share/fonts/TTF/DejaVuSans.ttf",
-                    ]
-                    for fallback in fallback_fonts:
-                        try:
-                            font = ImageFont.truetype(fallback, zone.font_size)
-                            break
-                        except:
-                            continue
-                    
-                    if font is None:
-                        # last resort; default font doesn't support sizing
-                        font = ImageFont.load_default()
+                font = self._fit_font(
+                    draw,
+                    text,
+                    zone.font_family,
+                    zone.font_size,
+                    max_width,
+                )
                 
                 color = self._hex_to_rgb(zone.font_color)
                 
@@ -230,9 +232,18 @@ class CertificateGenerator:
                 qr_img = self._create_qr_code(verification_url, qr_size)
                 template.paste(qr_img, (qr_x, qr_y))
             
-            output_filename = f"{verification_code}.png"
-            output_path = self.output_dir / output_filename
-            template.save(output_path, "PNG", quality=95)
+            output_path = self._safe_output_path(verification_code, "png")
+            with tempfile.NamedTemporaryFile(
+                dir=self.output_dir,
+                suffix=".png",
+                delete=False,
+            ) as temp_file:
+                temp_path = Path(temp_file.name)
+            try:
+                template.save(temp_path, "PNG", optimize=True)
+                temp_path.replace(output_path)
+            finally:
+                temp_path.unlink(missing_ok=True)
             
             return CertificateResult(
                 success=True,
@@ -254,119 +265,40 @@ class CertificateGenerator:
         qr_zone: Optional[QRZone] = None,
         verification_url_base: str = "",
     ) -> CertificateResult:
-        """uses reportlab to render the template as the pdf background."""
         try:
-            template_img = Image.open(template_path)
-            img_width, img_height = template_img.size
-            
-            verification_code = self.generate_verification_code(
-                data.participant_id,
-                "participation" if not data.rank or data.rank > 15 else "winner",
-                data.issued_at,
-            )
-            
-            output_filename = f"{verification_code}.pdf"
-            output_path = self.output_dir / output_filename
-            
-            # pixels to points (72pt = 1in at 96 dpi)
-            scale = 72 / 96
-            page_width = img_width * scale
-            page_height = img_height * scale
-            
-            c = canvas.Canvas(str(output_path), pagesize=(page_width, page_height))
-            
-            c.drawImage(
-                template_path,
-                0, 0,
-                width=page_width,
-                height=page_height,
-            )
-            
-            # field values under both naming conventions
-            field_values = {
-                # short names (legacy)
-                "name": data.display_name,
-                "team": data.team_name or "",
-                "rank": f"#{data.rank}" if data.rank else "",
-                "score": str(int(data.score)) if data.score else "",
-                "event": data.event_name,
-                "date": data.issued_at.strftime("%B %d, %Y"),
-                "verification_code": verification_code,
-                # full names (frontend uses these)
-                "participant_name": data.display_name,
-                "team_name": data.team_name or "",
-                "event_name": data.event_name,
-            }
-            
-            for zone in text_zones:
-                text = field_values.get(zone.field, "")
-                if not text:
-                    continue
-                
-                # pdf origin is bottom-left
-                if zone.is_percentage:
-                    x = zone.x / 100 * page_width
-                    y = page_height - (zone.y / 100 * page_height)
-                else:
-                    x = zone.x * scale
-                    y = page_height - (zone.y * scale)
-                
-                font_name = zone.font_family
-                # reportlab built-in fonts
-                if font_name.lower() not in ["helvetica", "times-roman", "courier"]:
-                    font_path = self._get_font_path(zone.font_family)
-                    if font_path:
-                        from reportlab.pdfbase import pdfmetrics
-                        from reportlab.pdfbase.ttfonts import TTFont
-                        try:
-                            pdfmetrics.registerFont(TTFont(zone.font_family, font_path))
-                            font_name = zone.font_family
-                        except:
-                            font_name = "Helvetica"
-                    else:
-                        font_name = "Helvetica"
-                
-                c.setFont(font_name, zone.font_size)
-                
-                rgb = self._hex_to_rgb(zone.font_color)
-                c.setFillColorRGB(rgb[0]/255, rgb[1]/255, rgb[2]/255)
-                
-                if zone.alignment == "center":
-                    c.drawCentredString(x, y, text)
-                elif zone.alignment == "right":
-                    c.drawRightString(x, y, text)
-                else:
-                    c.drawString(x, y, text)
-            
-            if qr_zone and verification_url_base:
-                verification_url = f"{verification_url_base}?code={verification_code}"
-                
-                if qr_zone.is_percentage:
-                    qr_x = qr_zone.x / 100 * page_width
-                    qr_y = page_height - (qr_zone.y / 100 * page_height)
-                    qr_size = qr_zone.size / 100 * min(page_width, page_height)
-                else:
-                    qr_x = qr_zone.x * scale
-                    qr_y = page_height - (qr_zone.y * scale)
-                    qr_size = qr_zone.size * scale
-                
-                qr_img = self._create_qr_code(verification_url, int(qr_size / scale))
-                
-                # pil image to bytes for reportlab
-                qr_buffer = io.BytesIO()
-                qr_img.save(qr_buffer, format="PNG")
-                qr_buffer.seek(0)
-                
-                c.drawImage(
-                    ImageReader(qr_buffer),
-                    qr_x,
-                    qr_y - qr_size,  # adjust for top-left origin
-                    width=qr_size,
-                    height=qr_size,
+            verification_code = data.verification_code
+            output_path = self._safe_output_path(verification_code, "pdf")
+            with tempfile.TemporaryDirectory() as temp_dir:
+                raster_generator = CertificateGenerator(
+                    fonts_dir=str(self.fonts_dir),
+                    output_dir=temp_dir,
                 )
-            
-            c.save()
-            
+                raster = raster_generator.generate_png(
+                    template_path,
+                    data,
+                    text_zones,
+                    qr_zone,
+                    verification_url_base,
+                )
+                if not raster.success or not raster.file_path:
+                    return CertificateResult(success=False, error=raster.error)
+                with Image.open(raster.file_path) as personalized:
+                    with tempfile.NamedTemporaryFile(
+                        dir=self.output_dir,
+                        suffix=".pdf",
+                        delete=False,
+                    ) as temp_file:
+                        temp_path = Path(temp_file.name)
+                    try:
+                        personalized.convert("RGB").save(
+                            temp_path,
+                            "PDF",
+                            resolution=96,
+                        )
+                        temp_path.replace(output_path)
+                    finally:
+                        temp_path.unlink(missing_ok=True)
+
             return CertificateResult(
                 success=True,
                 file_path=str(output_path),
@@ -435,6 +367,7 @@ class CertificateGenerator:
         sample_data = CertificateData(
             participant_id=UUID("00000000-0000-0000-0000-000000000000"),
             display_name="John Doe",
+            verification_code="CERT-ABCD-EFGH-JKLM",
             team_name="Sample Team",
             rank=1,
             score=1337,

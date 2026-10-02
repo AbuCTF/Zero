@@ -174,6 +174,13 @@ async def process_campaign_task(ctx: Dict[str, Any], campaign_id: str):
         result = await db.execute(query)
         participants = result.scalars().all()
 
+        event = None
+        if campaign.event_id:
+            result = await db.execute(
+                select(Event).where(Event.id == campaign.event_id)
+            )
+            event = result.scalar_one_or_none()
+
         # resume dedup: skip participants already SENT so a resumed run doesn't re-email
         sent_result = await db.execute(
             select(EmailLog.participant_id).where(
@@ -208,6 +215,21 @@ async def process_campaign_task(ctx: Dict[str, Any], campaign_id: str):
                 "name": participant.name or participant.username,
                 "email": participant.email,
                 "username": participant.username,
+                "rank": participant.final_rank,
+                "score": participant.final_score,
+                "event_name": event.name if event else "",
+                "certificate_url": f"{settings.app_url}/portal/certificates",
+                "participant": {
+                    "name": participant.name or participant.username,
+                    "email": participant.email,
+                    "username": participant.username,
+                    "team_name": (participant.extra_data or {}).get("team_name", ""),
+                },
+                "event": {
+                    "name": event.name if event else "",
+                    "start_date": event.event_start if event else None,
+                    "end_date": event.event_end if event else None,
+                },
             }
 
             subject = render_subject(campaign.subject, context)
@@ -507,10 +529,12 @@ async def generate_certificate_task(
         cert_data = CertificateData(
             participant_id=cert.participant_id,
             display_name=cert.display_name or participant.name or participant.username or "Participant",
+            verification_code=cert.verification_code,
             team_name=cert.team_name,
             rank=cert.rank,
             score=participant.final_score,
             event_name=event.name if event else "Event",
+            issued_at=cert.created_at,
         )
 
         generator = CertificateGenerator()

@@ -2,37 +2,32 @@
     import { onMount } from 'svelte';
     import { api, type CertificateTemplate, type Event as CtfEvent } from '$lib/api';
 
-    let templates = $state<CertificateTemplate[]>([]);
-    let events = $state<CtfEvent[]>([]);
-    let loading = $state(true);
-    let error = $state('');
-    
-    let showModal = $state(false);
-    let editingTemplate = $state<CertificateTemplate | null>(null);
-    let saving = $state(false);
-    let uploading = $state(false);
-    
-    let form = $state({
-        name: '',
-        event_id: '' as string | number,
-        background_image: '',
-        output_format: 'png' as 'png' | 'pdf',
-        width: 1920,
-        height: 1080,
-        text_zones: [] as Array<{
-            id: string;
-            field: string;
-            x: number;
-            y: number;
-            font_size: number;
-            font_family: string;
-            color: string;
-            alignment: 'left' | 'center' | 'right';
-        }>
-    });
+    type Zone = {
+        id: string;
+        field: string;
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+        font_size: number;
+        font_family: string;
+        color: string;
+        alignment: 'left' | 'center' | 'right';
+        is_percentage: boolean;
+    };
 
-    let previewImage = $state<string | null>(null);
-    let selectedZone = $state<string | null>(null);
+    type DesignerForm = {
+        name: string;
+        event_id: string | number;
+        background_image: string;
+        output_format: 'png' | 'pdf';
+        certificate_prefix: string;
+        width: number;
+        height: number;
+        text_zones: Zone[];
+        qr_zone: { x: number; y: number; size: number; is_percentage: boolean } | null;
+        is_default: boolean;
+    };
 
     const availableFields = [
         { value: 'participant_name', label: 'Participant Name' },
@@ -41,22 +36,68 @@
         { value: 'rank', label: 'Rank/Position' },
         { value: 'score', label: 'Score' },
         { value: 'date', label: 'Date' },
-        { value: 'verification_code', label: 'Verification Code' },
-        { value: 'custom', label: 'Custom Text' }
+        { value: 'verification_code', label: 'Full Certificate ID' },
+        { value: 'verification_suffix', label: 'Certificate ID Suffix' }
     ];
 
     const fontFamilies = [
-        'Inter',
-        'Roboto',
-        'Open Sans',
-        'Montserrat',
-        'Playfair Display',
-        'Georgia',
-        'Times New Roman'
+        { value: 'Exo2', label: 'Exo 2' },
+        { value: 'SpaceMono-Regular', label: 'Space Mono' },
+        { value: 'DejaVuSans', label: 'DejaVu Sans' }
     ];
 
-    onMount(async () => {
-        await Promise.all([loadTemplates(), loadEvents()]);
+    const sampleValues: Record<string, string> = {
+        participant_name: 'Participant Name',
+        team_name: 'Team Name',
+        event_name: 'H7CTF 2026',
+        rank: '#12',
+        score: '1337',
+        date: 'September 27, 2026',
+        verification_code: 'H7CTF26-ABCD-EFGH-JKLM',
+        verification_suffix: 'ABCD-EFGH-JKLM'
+    };
+
+    function emptyForm(): DesignerForm {
+        return {
+            name: '',
+            event_id: '',
+            background_image: '',
+            output_format: 'png',
+            certificate_prefix: 'CERT',
+            width: 1920,
+            height: 1080,
+            text_zones: [],
+            qr_zone: null,
+            is_default: false
+        };
+    }
+
+    let templates = $state<CertificateTemplate[]>([]);
+    let events = $state<CtfEvent[]>([]);
+    let loading = $state(true);
+    let error = $state('');
+    let showModal = $state(false);
+    let editingTemplate = $state<CertificateTemplate | null>(null);
+    let saving = $state(false);
+    let uploading = $state(false);
+    let issuingTemplate = $state<string | null>(null);
+    let notice = $state('');
+    let form = $state<DesignerForm>(emptyForm());
+    let previewImage = $state<string | null>(null);
+    let selectedZone = $state<string | null>(null);
+    let previewCanvas = $state<HTMLDivElement>();
+    let dragging = $state<{ kind: 'text'; id: string } | { kind: 'qr' } | null>(null);
+
+    onMount(() => {
+        const move = (event: PointerEvent) => moveDesignerItem(event);
+        const stop = () => dragging = null;
+        window.addEventListener('pointermove', move);
+        window.addEventListener('pointerup', stop);
+        Promise.all([loadTemplates(), loadEvents()]);
+        return () => {
+            window.removeEventListener('pointermove', move);
+            window.removeEventListener('pointerup', stop);
+        };
     });
 
     async function loadTemplates() {
@@ -75,22 +116,14 @@
         try {
             const response = await api.admin.events.list();
             events = response.events || response;
-        } catch (e) {
-            console.error('Failed to load events:', e);
+        } catch (e: any) {
+            error = e.message || 'Failed to load events';
         }
     }
 
     function openAddModal() {
         editingTemplate = null;
-        form = {
-            name: '',
-            event_id: '',
-            background_image: '',
-            output_format: 'png',
-            width: 1920,
-            height: 1080,
-            text_zones: []
-        };
+        form = emptyForm();
         previewImage = null;
         selectedZone = null;
         showModal = true;
@@ -103,62 +136,70 @@
             event_id: template.event_id || '',
             background_image: template.background_image,
             output_format: template.output_format as 'png' | 'pdf',
+            certificate_prefix: template.certificate_prefix || 'CERT',
             width: template.width,
             height: template.height,
-            text_zones: template.text_zones.map((z: any, i: number) => ({
-                ...z,
-                id: z.id || `zone-${i}`
-            }))
+            text_zones: template.text_zones.map((zone, index) => ({
+                id: zone.id || `zone-${index}`,
+                field: zone.field,
+                x: zone.x,
+                y: zone.y,
+                width: zone.width ?? 70,
+                height: zone.height ?? 10,
+                font_size: zone.font_size ?? 48,
+                font_family: zone.font_family ?? 'Exo2',
+                color: zone.font_color ?? zone.color ?? '#000000',
+                alignment: zone.alignment ?? 'center',
+                is_percentage: zone.is_percentage ?? true
+            })),
+            qr_zone: template.qr_zone ? {
+                x: template.qr_zone.x,
+                y: template.qr_zone.y,
+                size: template.qr_zone.size,
+                is_percentage: template.qr_zone.is_percentage ?? true
+            } : null,
+            is_default: template.is_default
         };
         previewImage = template.background_image;
         selectedZone = null;
         showModal = true;
     }
 
-    async function handleImageUpload(event: Event & { currentTarget: HTMLInputElement }) {
+    function handleImageUpload(event: Event & { currentTarget: HTMLInputElement }) {
         const file = event.currentTarget.files?.[0];
         if (!file) return;
-        
         if (!file.type.startsWith('image/')) {
-            error = 'Please upload an image file';
+            error = 'Please upload a PNG or JPEG image';
+            return;
+        }
+        if (file.size > 10 * 1024 * 1024) {
+            error = 'Certificate artwork must be 10 MB or smaller';
             return;
         }
 
         uploading = true;
-        try {
-            const formData = new FormData();
-            formData.append('file', file);
-
-            const response = await fetch('/api/admin/upload', {
-                method: 'POST',
-                body: formData,
-                credentials: 'include'
-            });
-            
-            if (!response.ok) {
-                throw new Error('Upload failed');
-            }
-            
-            const result = await response.json();
-            form.background_image = result.url;
-
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                previewImage = e.target?.result as string;
+        const reader = new FileReader();
+        reader.onload = (readEvent) => {
+            const imageData = readEvent.target?.result as string;
+            const image = new Image();
+            image.onload = () => {
+                form.width = image.naturalWidth;
+                form.height = image.naturalHeight;
+                form.background_image = imageData;
+                previewImage = imageData;
+                uploading = false;
             };
-            reader.readAsDataURL(file);
-        } catch (e: any) {
-            // fallback: base64
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                const base64 = e.target?.result as string;
-                form.background_image = base64;
-                previewImage = base64;
+            image.onerror = () => {
+                error = 'The selected image could not be read';
+                uploading = false;
             };
-            reader.readAsDataURL(file);
-        } finally {
+            image.src = imageData;
+        };
+        reader.onerror = () => {
+            error = 'The selected image could not be read';
             uploading = false;
-        }
+        };
+        reader.readAsDataURL(file);
     }
 
     function addTextZone() {
@@ -167,41 +208,96 @@
             id,
             field: 'participant_name',
             x: 50,
-            y: 50,
-            font_size: 48,
-            font_family: 'Inter',
+            y: 40,
+            width: 70,
+            height: 10,
+            font_size: 54,
+            font_family: 'Exo2',
             color: '#000000',
-            alignment: 'center'
+            alignment: 'center',
+            is_percentage: true
         }];
         selectedZone = id;
     }
 
     function removeTextZone(id: string) {
-        form.text_zones = form.text_zones.filter(z => z.id !== id);
+        form.text_zones = form.text_zones.filter((zone) => zone.id !== id);
         if (selectedZone === id) selectedZone = null;
     }
 
-    function updateZone(id: string, updates: Partial<typeof form.text_zones[0]>) {
-        form.text_zones = form.text_zones.map(z => 
-            z.id === id ? { ...z, ...updates } : z
-        );
+    function updateZone(id: string, updates: Partial<Zone>) {
+        form.text_zones = form.text_zones.map((zone) => zone.id === id ? { ...zone, ...updates } : zone);
+    }
+
+    function toggleQrZone() {
+        form.qr_zone = form.qr_zone ? null : { x: 50, y: 68, size: 11, is_percentage: true };
+    }
+
+    function beginTextDrag(event: PointerEvent, id: string) {
+        event.preventDefault();
+        selectedZone = id;
+        dragging = { kind: 'text', id };
+    }
+
+    function beginQrDrag(event: PointerEvent) {
+        event.preventDefault();
+        selectedZone = null;
+        dragging = { kind: 'qr' };
+    }
+
+    function moveDesignerItem(event: PointerEvent) {
+        if (!dragging || !previewCanvas) return;
+        const bounds = previewCanvas.getBoundingClientRect();
+        const x = Math.max(0, Math.min(100, ((event.clientX - bounds.left) / bounds.width) * 100));
+        const y = Math.max(0, Math.min(100, ((event.clientY - bounds.top) / bounds.height) * 100));
+        if (dragging.kind === 'qr') {
+            if (form.qr_zone) {
+                form.qr_zone.x = Number(x.toFixed(2));
+                form.qr_zone.y = Number(y.toFixed(2));
+            }
+            return;
+        }
+        updateZone(dragging.id, { x: Number(x.toFixed(2)), y: Number(y.toFixed(2)) });
+    }
+
+    function zoneTransform(alignment: Zone['alignment']): string {
+        if (alignment === 'center') return 'translateX(-50%)';
+        if (alignment === 'right') return 'translateX(-100%)';
+        return 'none';
+    }
+
+    function qrWidthPercent(): number {
+        if (!form.qr_zone) return 0;
+        return form.qr_zone.size * (Math.min(form.width, form.height) / form.width);
+    }
+
+    function sampleValue(field: string): string {
+        if (field === 'verification_code') return `${form.certificate_prefix || 'CERT'}-ABCD-EFGH-JKLM`;
+        return sampleValues[field] || field;
     }
 
     async function handleSubmit() {
-        if (!form.name || !form.background_image) {
-            error = 'Please provide a name and upload a background image';
+        if (!form.name.trim() || !form.background_image) {
+            error = 'Add a template name and background image';
             return;
         }
-        
+        if (form.text_zones.length === 0) {
+            error = 'Add at least one text zone';
+            return;
+        }
+
         saving = true;
         error = '';
         try {
             const payload = {
                 ...form,
+                name: form.name.trim(),
                 event_id: form.event_id ? String(form.event_id) : null,
-                text_zones: form.text_zones.map(({ id, ...zone }) => zone)
+                text_zones: form.text_zones.map((zone) => ({
+                    ...zone,
+                    font_color: zone.color
+                }))
             };
-            
             if (editingTemplate) {
                 await api.admin.certificateTemplates.update(editingTemplate.id, payload);
             } else {
@@ -217,8 +313,7 @@
     }
 
     async function handleDelete(id: string) {
-        if (!confirm('Are you sure you want to delete this certificate template?')) return;
-        
+        if (!confirm('Delete this certificate template?')) return;
         try {
             await api.admin.certificateTemplates.delete(id);
             await loadTemplates();
@@ -227,13 +322,25 @@
         }
     }
 
-    function getEventName(eventId: string | null | undefined): string {
-        if (!eventId) return 'Global';
-        return events.find(e => e.id === eventId)?.name || 'Unknown';
+    async function issueCertificates(template: CertificateTemplate) {
+        if (!template.event_id || !template.is_default) return;
+        if (!confirm(`Issue ${template.name} to eligible participants? Existing certificates will be kept.`)) return;
+        issuingTemplate = template.id;
+        error = '';
+        notice = '';
+        try {
+            const result = await api.admin.certificateTemplates.issue(template.event_id);
+            notice = result.message;
+        } catch (e: any) {
+            error = e.message || 'Failed to issue certificates';
+        } finally {
+            issuingTemplate = null;
+        }
     }
 
-    function getFieldLabel(field: string): string {
-        return availableFields.find(f => f.value === field)?.label || field;
+    function getEventName(eventId: string | null | undefined): string {
+        if (!eventId) return 'Global';
+        return events.find((event) => event.id === eventId)?.name || 'Unknown';
     }
 </script>
 
@@ -247,7 +354,7 @@
             <div>
                 <h1 class="text-2xl font-semibold">Certificate Templates</h1>
                 <p class="text-sm text-foreground-muted mt-1">
-                    Design certificates with custom text placement
+                    Upload artwork, place dynamic fields and publish certificates
                 </p>
             </div>
             <button onclick={openAddModal} class="btn btn-primary">
@@ -258,6 +365,12 @@
     {#if error && !showModal}
         <div class="bg-destructive/10 text-destructive px-4 py-3 rounded-lg">
             {error}
+        </div>
+    {/if}
+
+    {#if notice && !showModal}
+        <div class="bg-success/10 text-success px-4 py-3 rounded-lg">
+            {notice}
         </div>
     {/if}
 
@@ -301,6 +414,15 @@
                                 </p>
                             </div>
                             <div class="flex items-center gap-1">
+                                {#if template.event_id && template.is_default}
+                                    <button
+                                        onclick={() => issueCertificates(template)}
+                                        class="btn btn-ghost btn-sm"
+                                        disabled={issuingTemplate === template.id}
+                                    >
+                                        {issuingTemplate === template.id ? 'Issuing…' : 'Issue'}
+                                    </button>
+                                {/if}
                                 <button 
                                     onclick={() => openEditModal(template)}
                                     class="btn btn-ghost btn-sm"
@@ -325,7 +447,7 @@
 
 {#if showModal}
     <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-        <div class="bg-card rounded-xl shadow-xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
+        <div class="bg-card rounded-xl shadow-xl w-full max-w-7xl max-h-[94vh] overflow-hidden flex flex-col">
             <div class="px-6 py-4 border-b border-border flex items-center justify-between">
                 <h2 class="text-lg font-semibold">
                     {editingTemplate ? 'Edit Template' : 'New Certificate Template'}
@@ -344,8 +466,8 @@
                     </div>
                 {/if}
                 
-                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <div class="space-y-4">
+                <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+                    <div class="space-y-4 xl:col-span-5">
                         <div>
                             <label for="name" class="block text-sm font-medium mb-1.5">
                                 Template Name
@@ -360,7 +482,7 @@
                             />
                         </div>
 
-                        <div class="grid grid-cols-2 gap-4">
+                        <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
                             <div>
                                 <label for="event" class="block text-sm font-medium mb-1.5">
                                     Event (Optional)
@@ -380,6 +502,21 @@
                                     <option value="png">PNG</option>
                                     <option value="pdf">PDF</option>
                                 </select>
+                            </div>
+                            <div>
+                                <label for="certificate-prefix" class="block text-sm font-medium mb-1.5">
+                                    Certificate ID Prefix
+                                </label>
+                                <input
+                                    id="certificate-prefix"
+                                    bind:value={form.certificate_prefix}
+                                    class="input uppercase"
+                                    minlength="2"
+                                    maxlength="20"
+                                    pattern="[A-Za-z0-9]+"
+                                    placeholder="CERT"
+                                    required
+                                />
                             </div>
                         </div>
 
@@ -404,9 +541,17 @@
                                 {/if}
                             </div>
                             <p class="text-xs text-foreground-muted mt-1">
-                                Recommended: 1920x1080 for landscape, 1080x1920 for portrait
+                                Canvas size is detected from the image automatically.
                             </p>
                         </div>
+
+                        <label class="flex items-start gap-3 rounded-lg border border-border p-3">
+                            <input type="checkbox" bind:checked={form.is_default} class="mt-0.5 h-4 w-4" />
+                            <span>
+                                <span class="block text-sm font-medium">Default for this event</span>
+                                <span class="block text-xs text-foreground-muted mt-0.5">Used when certificates are issued for this event.</span>
+                            </span>
+                        </label>
 
                         <div class="grid grid-cols-2 gap-4">
                             <div>
@@ -452,7 +597,7 @@
                                     No text zones. Click "Add Zone" to create one.
                                 </p>
                             {:else}
-                                <div class="space-y-3 max-h-64 overflow-y-auto">
+                                <div class="space-y-3 max-h-[28rem] overflow-y-auto pr-1">
                                     {#each form.text_zones as zone}
                                         <div
                                             class="p-3 rounded-lg border transition-colors cursor-pointer {selectedZone === zone.id ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'}"
@@ -505,14 +650,14 @@
                                                         />
                                                     </div>
                                                     <div>
-                                                        <label for="{zone.id}-font-size" class="text-xs text-foreground-muted">Font Size</label>
+                                                        <label for="{zone.id}-width" class="text-xs text-foreground-muted">Max width (%)</label>
                                                         <input
                                                             type="number"
-                                                            id="{zone.id}-font-size"
-                                                            bind:value={zone.font_size}
+                                                            id="{zone.id}-width"
+                                                            bind:value={zone.width}
                                                             class="input text-sm py-1"
-                                                            min="8"
-                                                            max="200"
+                                                            min="1"
+                                                            max="100"
                                                         />
                                                     </div>
                                                     <div>
@@ -528,7 +673,7 @@
                                                         <label for="{zone.id}-font" class="text-xs text-foreground-muted">Font</label>
                                                         <select id="{zone.id}-font" bind:value={zone.font_family} class="input text-sm py-1">
                                                             {#each fontFamilies as font}
-                                                                <option value={font}>{font}</option>
+                                                                <option value={font.value}>{font.label}</option>
                                                             {/each}
                                                         </select>
                                                     </div>
@@ -540,6 +685,20 @@
                                                             <option value="right">Right</option>
                                                         </select>
                                                     </div>
+                                                    <div class="col-span-2">
+                                                        <div class="flex items-center justify-between">
+                                                            <label for="{zone.id}-font-size" class="text-xs text-foreground-muted">Font size</label>
+                                                            <span class="text-xs tabular-nums text-foreground-muted">{zone.font_size}px</span>
+                                                        </div>
+                                                        <input
+                                                            type="range"
+                                                            id="{zone.id}-font-size"
+                                                            bind:value={zone.font_size}
+                                                            class="w-full accent-primary"
+                                                            min="8"
+                                                            max="200"
+                                                        />
+                                                    </div>
                                                 </div>
                                             {/if}
                                         </div>
@@ -547,13 +706,45 @@
                                 </div>
                             {/if}
                         </div>
+
+                        <div class="rounded-lg border border-border p-3">
+                            <div class="flex items-center justify-between gap-3">
+                                <div>
+                                    <div class="text-sm font-medium">Verification QR</div>
+                                    <div class="text-xs text-foreground-muted mt-0.5">Links to the public certificate record.</div>
+                                </div>
+                                <button onclick={toggleQrZone} class="btn btn-secondary btn-sm">
+                                    {form.qr_zone ? 'Remove' : 'Add QR'}
+                                </button>
+                            </div>
+                            {#if form.qr_zone}
+                                <div class="grid grid-cols-3 gap-2 mt-3">
+                                    <div>
+                                        <label for="qr-x" class="text-xs text-foreground-muted">X (%)</label>
+                                        <input id="qr-x" type="number" bind:value={form.qr_zone.x} min="0" max="100" class="input text-sm py-1" />
+                                    </div>
+                                    <div>
+                                        <label for="qr-y" class="text-xs text-foreground-muted">Y (%)</label>
+                                        <input id="qr-y" type="number" bind:value={form.qr_zone.y} min="0" max="100" class="input text-sm py-1" />
+                                    </div>
+                                    <div>
+                                        <label for="qr-size" class="text-xs text-foreground-muted">Size (%)</label>
+                                        <input id="qr-size" type="number" bind:value={form.qr_zone.size} min="2" max="40" class="input text-sm py-1" />
+                                    </div>
+                                </div>
+                            {/if}
+                        </div>
                     </div>
 
-                    <div>
-                        <h3 class="text-sm font-medium mb-3">Preview</h3>
+                    <div class="xl:col-span-7">
+                        <div class="flex items-center justify-between mb-3">
+                            <h3 class="text-sm font-medium">Live preview</h3>
+                            <span class="text-xs text-foreground-muted">Drag a field or QR to place it</span>
+                        </div>
                         <div 
-                            class="relative bg-muted rounded-lg overflow-hidden"
-                            style="aspect-ratio: {form.width}/{form.height};"
+                            bind:this={previewCanvas}
+                            class="certificate-canvas relative bg-muted rounded-lg overflow-hidden border border-border select-none"
+                            style="aspect-ratio: {form.width}/{form.height}; container-type: inline-size;"
                         >
                             {#if previewImage}
                                 <img 
@@ -562,25 +753,37 @@
                                     class="w-full h-full object-contain"
                                 />
                                 {#each form.text_zones as zone}
-                                    <div 
-                                        class="absolute transform -translate-x-1/2 -translate-y-1/2 pointer-events-none
-                                               {selectedZone === zone.id ? 'ring-2 ring-primary' : ''}"
-                                        style="left: {zone.x}%; top: {zone.y}%; font-size: {zone.font_size * 0.3}px; color: {zone.color}; font-family: {zone.font_family}; text-align: {zone.alignment};"
+                                    <button
+                                        type="button"
+                                        class="absolute cursor-move whitespace-nowrap border border-transparent bg-transparent p-0 leading-tight {selectedZone === zone.id ? 'outline outline-2 outline-primary outline-offset-2' : 'hover:outline hover:outline-1 hover:outline-primary/70'}"
+                                        style="left: {zone.x}%; top: {zone.y}%; width: {zone.width}%; transform: {zoneTransform(zone.alignment)}; font-size: {zone.font_size / form.width * 100}cqw; color: {zone.color}; font-family: {zone.font_family}; text-align: {zone.alignment};"
+                                        onpointerdown={(event) => beginTextDrag(event, zone.id)}
+                                        aria-label="Move {availableFields.find((field) => field.value === zone.field)?.label || zone.field}"
                                     >
-                                        <div class="bg-black/50 px-2 py-1 rounded text-white text-xs whitespace-nowrap">
-                                            {getFieldLabel(zone.field)}
-                                        </div>
-                                    </div>
+                                        {sampleValue(zone.field)}
+                                    </button>
                                 {/each}
+                                {#if form.qr_zone}
+                                    <button
+                                        type="button"
+                                        class="absolute grid cursor-move place-items-center border-2 border-primary bg-white text-[8px] font-semibold uppercase tracking-widest text-black"
+                                        style="left: {form.qr_zone.x}%; top: {form.qr_zone.y}%; width: {qrWidthPercent()}%; aspect-ratio: 1;"
+                                        onpointerdown={beginQrDrag}
+                                        aria-label="Move verification QR"
+                                    >
+                                        QR
+                                    </button>
+                                {/if}
                             {:else}
                                 <div class="absolute inset-0 flex items-center justify-center text-foreground-muted">
                                     Upload an image to preview
                                 </div>
                             {/if}
                         </div>
-                        <p class="text-xs text-foreground-muted mt-2 text-center">
-                            Text zones are shown at their approximate positions
-                        </p>
+                        <div class="mt-3 flex items-center justify-between text-xs text-foreground-muted">
+                            <span>{form.width} × {form.height}px</span>
+                            <span>Long names shrink to fit the zone width</span>
+                        </div>
                     </div>
                 </div>
             </div>

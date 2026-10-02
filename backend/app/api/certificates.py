@@ -26,6 +26,7 @@ from app.schemas import (
     CertificateVerifyResponse,
 )
 from app.services.certificates import CertificateData, CertificateGenerator
+from app.utils.security import generate_random_certificate_code, normalize_certificate_code
 
 router = APIRouter()
 settings = get_settings()
@@ -119,6 +120,10 @@ async def customize_certificate(
         select(CertificateTemplate).where(
             CertificateTemplate.id == template_id,
             CertificateTemplate.is_active == True,
+            (
+                (CertificateTemplate.event_id == participant.event_id)
+                | CertificateTemplate.event_id.is_(None)
+            ),
         )
     )
     template = result.scalar_one_or_none()
@@ -160,22 +165,28 @@ async def customize_certificate(
         select(Certificate).where(
             Certificate.participant_id == participant.id,
             Certificate.template_id == template.id,
-        )
+        ).with_for_update()
     )
     existing = result.scalar_one_or_none()
     
     if existing:
-        existing.display_name = data.display_name
+        if existing.name_locked:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="The name is locked after the first download",
+            )
+        if existing.display_name != data.display_name:
+            if existing.edit_count >= 1:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="The certificate name has already been changed once",
+                )
+            existing.display_name = data.display_name
+            existing.edit_count += 1
         existing.team_name = team_name
         cert = existing
     else:
-        from app.utils.security import generate_certificate_code
-        
-        verification_code = generate_certificate_code(
-            str(participant.id),
-            "winner" if participant.final_rank and participant.final_rank <= 15 else "participation",
-            datetime.utcnow(),
-        )
+        verification_code = generate_random_certificate_code(template.certificate_prefix)
         
         cert = Certificate(
             participant_id=participant.id,
@@ -199,11 +210,12 @@ async def customize_certificate(
     cert_data = CertificateData(
         participant_id=participant.id,
         display_name=data.display_name,
+        verification_code=cert.verification_code,
         team_name=team_name,
         rank=participant.final_rank,
         score=participant.final_score,
         event_name=event.name if event else "",
-        issued_at=datetime.utcnow(),
+        issued_at=cert.created_at,
     )
     
     template_path = Path(settings.upload_dir) / template.template_file
@@ -217,21 +229,26 @@ async def customize_certificate(
         verification_url_base=f"{settings.app_url}/verify",
     )
     
-    if result.success:
-        cert.file_path = result.file_path
-        cert.generated_at = datetime.utcnow()
-        await db.flush()
-        
-        audit_log = AuditLog(
-            action="certificate.generate",
-            participant_id=participant.id,
-            actor_type="participant",
-            resource_type="certificate",
-            resource_id=cert.id,
-            ip_address=get_client_ip(request),
+    if not result.success:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Certificate rendering failed",
         )
-        db.add(audit_log)
-        await db.flush()
+
+    cert.file_path = result.file_path
+    cert.generated_at = datetime.utcnow()
+    await db.flush()
+
+    audit_log = AuditLog(
+        action="certificate.generate",
+        participant_id=participant.id,
+        actor_type="participant",
+        resource_type="certificate",
+        resource_id=cert.id,
+        ip_address=get_client_ip(request),
+    )
+    db.add(audit_log)
+    await db.flush()
     
     return CertificateResponse(
         id=cert.id,
@@ -253,7 +270,7 @@ async def download_certificate(
 ):
     result = await db.execute(
         select(Certificate).where(
-            Certificate.verification_code == verification_code,
+            Certificate.verification_code == normalize_certificate_code(verification_code),
             Certificate.participant_id == participant.id,
         )
     )
@@ -318,7 +335,9 @@ async def verify_certificate(
 ):
     """public endpoint; verifies a certificate by code, no authentication required."""
     result = await db.execute(
-        select(Certificate).where(Certificate.verification_code == code)
+        select(Certificate).where(
+            Certificate.verification_code == normalize_certificate_code(code)
+        )
     )
     cert = result.scalar_one_or_none()
     
@@ -351,6 +370,7 @@ async def verify_certificate(
     
     return CertificateVerifyResponse(
         valid=True,
+        certificate_id=cert.verification_code,
         participant_name=cert.display_name,
         team_name=cert.team_name,
         rank=cert.rank,

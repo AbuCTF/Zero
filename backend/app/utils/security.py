@@ -83,6 +83,21 @@ def generate_certificate_code(
     return f"H7-{hash_hex[:4]}-{hash_hex[4:8]}-{hash_hex[8:]}"
 
 
+def generate_random_certificate_code(prefix: str = "CERT") -> str:
+    normalized_prefix = prefix.strip().upper()
+    if not normalized_prefix.isalnum() or not 2 <= len(normalized_prefix) <= 20:
+        raise ValueError("Certificate prefix must be 2-20 letters or numbers")
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    suffix = "".join(secrets.choice(alphabet) for _ in range(12))
+    groups = "-".join(suffix[i:i + 4] for i in range(0, len(suffix), 4))
+    return f"{normalized_prefix}-{groups}"
+
+
+def normalize_certificate_code(code: str) -> str:
+    normalized = "-".join(part.strip() for part in code.strip().upper().split("-"))
+    return normalized.replace(" ", "")
+
+
 def verify_certificate_code(
     code: str,
     participant_id: str,

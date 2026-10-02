@@ -477,34 +477,110 @@ class PrizeClaimRequest(BaseModel):
     pass  # no body needed, just post to claim
 
 
+def validate_certificate_text_zones(
+    zones: Optional[List[Dict[str, Any]]],
+) -> Optional[List[Dict[str, Any]]]:
+    if zones is None:
+        return None
+    if len(zones) > 20:
+        raise ValueError("A template can contain at most 20 text zones")
+    allowed_fields = {
+        "name",
+        "team",
+        "rank",
+        "score",
+        "event",
+        "date",
+        "verification_code",
+        "verification_suffix",
+        "participant_name",
+        "team_name",
+        "event_name",
+    }
+    for zone in zones:
+        if zone.get("field") not in allowed_fields:
+            raise ValueError("Unsupported certificate field")
+        for key in ("x", "y"):
+            value = zone.get(key)
+            if not isinstance(value, (int, float)) or not 0 <= value <= 100:
+                raise ValueError(f"{key} must be between 0 and 100")
+        width = zone.get("width", 100)
+        if not isinstance(width, (int, float)) or not 1 <= width <= 100:
+            raise ValueError("width must be between 1 and 100")
+        font_size = zone.get("font_size", 24)
+        if not isinstance(font_size, int) or not 8 <= font_size <= 300:
+            raise ValueError("font_size must be between 8 and 300")
+        if zone.get("alignment", "center") not in {"left", "center", "right"}:
+            raise ValueError("Unsupported text alignment")
+    return zones
+
+
+def validate_certificate_qr_zone(
+    zone: Optional[Dict[str, Any]],
+) -> Optional[Dict[str, Any]]:
+    if zone is None:
+        return None
+    for key in ("x", "y"):
+        value = zone.get(key)
+        if not isinstance(value, (int, float)) or not 0 <= value <= 100:
+            raise ValueError(f"QR {key} must be between 0 and 100")
+    size = zone.get("size")
+    if not isinstance(size, (int, float)) or not 2 <= size <= 40:
+        raise ValueError("QR size must be between 2 and 40")
+    return zone
+
+
 class CertificateTemplateCreate(BaseModel):
     event_id: Optional[UUID] = None  # none = global template (any event)
     name: str = Field(..., max_length=255)
     description: Optional[str] = None
     background_image: Optional[str] = None  # url or base64 of background image
-    width: int = 1920
-    height: int = 1080
-    text_zones: List[Dict[str, Any]] = []
+    width: int = Field(1920, ge=100, le=8000)
+    height: int = Field(1080, ge=100, le=8000)
+    text_zones: List[Dict[str, Any]] = Field(default_factory=list)
     qr_zone: Optional[Dict[str, Any]] = None
     output_format: str = "pdf"
+    certificate_prefix: str = Field("CERT", min_length=2, max_length=20, pattern=r"^[A-Za-z0-9]+$")
     rank_from: Optional[int] = None
     rank_to: Optional[int] = None
     is_default: bool = False
 
+    _validate_text_zones = field_validator("text_zones")(validate_certificate_text_zones)
+    _validate_qr_zone = field_validator("qr_zone")(validate_certificate_qr_zone)
+
+    @field_validator("output_format")
+    @classmethod
+    def validate_output_format(cls, value: str) -> str:
+        if value not in {"png", "pdf"}:
+            raise ValueError("Output format must be PNG or PDF")
+        return value
+
 
 class CertificateTemplateUpdate(BaseModel):
+    event_id: Optional[UUID] = None
     name: Optional[str] = None
     description: Optional[str] = None
     background_image: Optional[str] = None  # url or base64 of background image
-    width: Optional[int] = None
-    height: Optional[int] = None
+    width: Optional[int] = Field(None, ge=100, le=8000)
+    height: Optional[int] = Field(None, ge=100, le=8000)
     text_zones: Optional[List[Dict[str, Any]]] = None
     qr_zone: Optional[Dict[str, Any]] = None
     output_format: Optional[str] = None
+    certificate_prefix: Optional[str] = Field(None, min_length=2, max_length=20, pattern=r"^[A-Za-z0-9]+$")
     rank_from: Optional[int] = None
     rank_to: Optional[int] = None
     is_active: Optional[bool] = None
     is_default: Optional[bool] = None
+
+    _validate_text_zones = field_validator("text_zones")(validate_certificate_text_zones)
+    _validate_qr_zone = field_validator("qr_zone")(validate_certificate_qr_zone)
+
+    @field_validator("output_format")
+    @classmethod
+    def validate_output_format(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None and value not in {"png", "pdf"}:
+            raise ValueError("Output format must be PNG or PDF")
+        return value
 
 
 class CertificateTemplateResponse(BaseModel):
@@ -521,6 +597,7 @@ class CertificateTemplateResponse(BaseModel):
     text_zones: List[Dict[str, Any]]
     qr_zone: Optional[Dict[str, Any]]
     output_format: str
+    certificate_prefix: str = "CERT"
     rank_from: Optional[int]
     rank_to: Optional[int]
     is_active: bool
@@ -529,7 +606,15 @@ class CertificateTemplateResponse(BaseModel):
 
 
 class CertificateCustomizeRequest(BaseModel):
-    display_name: str = Field(..., min_length=1, max_length=255)
+    display_name: str = Field(..., min_length=1, max_length=80)
+
+    @field_validator("display_name")
+    @classmethod
+    def validate_display_name(cls, value: str) -> str:
+        normalized = " ".join(value.split())
+        if not normalized or any(ord(character) < 32 for character in normalized):
+            raise ValueError("Enter a valid name")
+        return normalized
 
 
 class CertificatePreviewRequest(BaseModel):
@@ -551,6 +636,7 @@ class CertificateResponse(BaseModel):
 class CertificateVerifyResponse(BaseModel):
     # public
     valid: bool
+    certificate_id: Optional[str] = None
     participant_name: Optional[str] = None
     team_name: Optional[str] = None
     rank: Optional[int] = None

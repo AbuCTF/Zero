@@ -704,10 +704,8 @@ async def get_participant_certificates(
     participant: Participant = Depends(require_verified_participant),
     db: AsyncSession = Depends(get_session),
 ):
-    """get participant's certificates; lazily creates one from the default template if none exists and the participant is eligible."""
+    """get certificates issued to the current participant."""
     from app.models import CertificateTemplate
-    import secrets
-    
     result = await db.execute(
         select(Certificate).where(Certificate.participant_id == participant.id)
     )
@@ -718,51 +716,6 @@ async def get_participant_certificates(
     )
     event = event_result.scalar_one_or_none()
     event_name = event.name if event else "Unknown Event"
-    
-    # lazy creation: no certificates for a verified participant -> create one
-    if not certificates and participant.email_verified:
-        # default template for this event (or global default)
-        template_result = await db.execute(
-            select(CertificateTemplate).where(
-                CertificateTemplate.event_id == participant.event_id,
-                CertificateTemplate.is_default == True,
-            )
-        )
-        template = template_result.scalar_one_or_none()
-        
-        # no event-specific default -> try global default
-        if not template:
-            template_result = await db.execute(
-                select(CertificateTemplate).where(
-                    CertificateTemplate.event_id.is_(None),
-                    CertificateTemplate.is_default == True,
-                )
-            )
-            template = template_result.scalar_one_or_none()
-        
-        # still none -> any template for the event
-        if not template:
-            template_result = await db.execute(
-                select(CertificateTemplate).where(
-                    CertificateTemplate.event_id == participant.event_id,
-                ).limit(1)
-            )
-            template = template_result.scalar_one_or_none()
-        
-        if template:
-            # create certificate record (generated on download)
-            new_cert = Certificate(
-                participant_id=participant.id,
-                template_id=template.id,
-                display_name=participant.name or participant.username,
-                team_name=participant.extra_data.get("team_name") if participant.extra_data else None,
-                rank=participant.final_rank,
-                verification_code=secrets.token_urlsafe(16),
-            )
-            db.add(new_cert)
-            await db.commit()
-            await db.refresh(new_cert)
-            certificates = [new_cert]
     
     cert_list = []
     for c in certificates:
@@ -825,6 +778,7 @@ async def download_certificate(
     from app.services.certificates import CertificateGenerator, CertificateData, TextZone, QRZone
     from app.config import get_settings
     import os
+    from pathlib import Path
     
     settings = get_settings()
     
@@ -866,7 +820,7 @@ async def download_certificate(
         select(Certificate).where(
             Certificate.id == cert_uuid,
             Certificate.participant_id == participant.id,
-        )
+        ).with_for_update()
     )
     certificate = result.scalar_one_or_none()
     
@@ -940,16 +894,23 @@ async def download_certificate(
         cert_data = CertificateData(
             participant_id=certificate.participant_id,
             display_name=certificate.display_name or participant.name or participant.username or "Participant",
+            verification_code=certificate.verification_code,
             team_name=certificate.team_name,
             rank=certificate.rank,
             score=participant.final_score,
             event_name=event.name if event else "Event",
+            issued_at=certificate.created_at,
         )
         
         generator = CertificateGenerator()
         verify_url = f"{settings.app_url}/verify"
         
-        result = generator.generate_png(
+        generate = (
+            generator.generate_pdf
+            if template.output_format == "pdf"
+            else generator.generate_png
+        )
+        result = generate(
             template_path=template_path,
             data=cert_data,
             text_zones=text_zones,
@@ -976,8 +937,9 @@ async def download_certificate(
     
     await db.commit()
     
-    media_type = "application/pdf" if format == "pdf" else "image/png"
-    filename = f"certificate_{certificate.verification_code}.{format}"
+    file_suffix = Path(certificate.file_path).suffix.lower()
+    media_type = "application/pdf" if file_suffix == ".pdf" else "image/png"
+    filename = f"certificate_{certificate.verification_code}{file_suffix}"
     
     return FileResponse(
         certificate.file_path,
@@ -1010,7 +972,7 @@ async def update_certificate_display_name(
         select(Certificate).where(
             Certificate.id == cert_uuid,
             Certificate.participant_id == participant.id,
-        )
+        ).with_for_update()
     )
     certificate = result.scalar_one_or_none()
     
@@ -1074,4 +1036,3 @@ async def update_certificate_display_name(
         "display_name": certificate.display_name,
         "edits_remaining": MAX_NAME_EDITS - certificate.edit_count,
     }
-

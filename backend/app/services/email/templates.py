@@ -277,6 +277,45 @@ Thank you for playing!
         "variables": ["event_name", "name", "rank", "score", "claim_url"],
     },
 
+    "certificate_available": {
+        "name": "Certificate Available",
+        "slug": "certificate_available",
+        "subject": "Your {{ event_name }} participation certificate is ready",
+        "body_html": """
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body style="margin:0;background:#f5f5f4;color:#1c1917;font-family:Arial,sans-serif;">
+    <div style="max-width:600px;margin:0 auto;padding:40px 20px;">
+        <div style="background:#ffffff;border:1px solid #e7e5e4;border-radius:12px;padding:32px;">
+            <h1 style="font-size:24px;margin:0 0 20px;">Your participation certificate is ready</h1>
+            <p>Hello <strong>{{ name }}</strong>,</p>
+            <p>Thank you for participating in {{ event_name }}. Confirm the name that should appear on your certificate, then download it from your participant portal.</p>
+            <p style="margin:28px 0;">
+                <a href="{{ certificate_url }}" style="display:inline-block;background:#18181b;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:7px;font-weight:600;">View certificate</a>
+            </p>
+            <p style="font-size:13px;color:#78716c;margin-bottom:0;">The name can be changed once before the first download.</p>
+        </div>
+    </div>
+</body>
+</html>
+        """,
+        "body_text": """
+Hello {{ name }},
+
+Thank you for participating in {{ event_name }}. Your participation certificate is ready.
+
+Confirm the name that should appear on it, then download it here:
+{{ certificate_url }}
+
+The name can be changed once before the first download.
+        """,
+        "variables": ["name", "event_name", "certificate_url"],
+    },
+
     "password_reset": {
         "name": "Password Reset",
         "slug": "password_reset",

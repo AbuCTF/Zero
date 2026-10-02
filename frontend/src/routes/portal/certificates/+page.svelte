@@ -194,11 +194,11 @@
                         
                         <div class="flex items-center gap-2">
                             <a 
-                                href={api.participant.downloadCertificate(cert.id, 'png')}
+                                href={api.participant.downloadCertificate(cert.id, cert.format || 'png')}
                                 download
                                 class="btn btn-primary btn-sm flex-1"
                             >
-                                Download PNG
+                                Download {cert.format?.toUpperCase() || 'PNG'}
                             </a>
                             <a 
                                 href="/verify?code={cert.verification_code}"

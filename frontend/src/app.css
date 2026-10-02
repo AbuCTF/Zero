@@ -1,5 +1,21 @@
 @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,300..800&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
+@font-face {
+	font-family: 'Exo2';
+	src: url('/fonts/Exo2.ttf') format('truetype');
+	font-weight: 100 900;
+	font-style: normal;
+	font-display: swap;
+}
+
+@font-face {
+	font-family: 'SpaceMono-Regular';
+	src: url('/fonts/SpaceMono-Regular.ttf') format('truetype');
+	font-weight: 400;
+	font-style: normal;
+	font-display: swap;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

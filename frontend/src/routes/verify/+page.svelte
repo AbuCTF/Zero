@@ -22,6 +22,7 @@
 	let result = $state<{
 		checked: boolean;
 		valid: boolean;
+		certificate_id?: string;
 		participant_name?: string;
 		event_name?: string;
 		rank?: number;
@@ -283,6 +284,12 @@
 								<span class="font-medium text-success">Valid Certificate</span>
 							</div>
 							<dl class="space-y-2 text-sm">
+								{#if result.certificate_id}
+									<div class="flex justify-between gap-4">
+										<dt class="text-foreground-muted">Certificate ID</dt>
+										<dd class="font-mono text-right text-foreground">{result.certificate_id}</dd>
+									</div>
+								{/if}
 								<div class="flex justify-between">
 									<dt class="text-foreground-muted">Participant</dt>
 									<dd class="text-foreground font-medium">{result.participant_name}</dd>

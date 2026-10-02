@@ -39,7 +39,7 @@ services:
       - .env
     volumes:
       - storage_data:/app/storage
-      - ./fonts:/app/fonts:ro
+      - ./frontend/static/fonts:/app/fonts:ro
     ports:
       - "127.0.0.1:8002:8000"
     depends_on:
@@ -61,7 +61,7 @@ services:
       - .env
     volumes:
       - storage_data:/app/storage
-      - ./fonts:/app/fonts:ro
+      - ./frontend/static/fonts:/app/fonts:ro
     depends_on:
       db:
         condition: service_healthy

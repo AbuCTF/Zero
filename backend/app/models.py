@@ -668,6 +668,9 @@ class CertificateTemplate(TimestampMixin, Base):
     # {x, y, size}
 
     output_format: Mapped[str] = mapped_column(String(10), default="pdf", nullable=False)
+    certificate_prefix: Mapped[str] = mapped_column(
+        String(20), default="CERT", server_default="CERT", nullable=False
+    )
 
     # rank range this template applies to
     rank_from: Mapped[Optional[int]] = mapped_column(Integer)
@@ -724,6 +727,11 @@ class Certificate(TimestampMixin, Base):
     __table_args__ = (
         Index("idx_certificates_participant", "participant_id"),
         Index("idx_certificates_verification_code", "verification_code"),
+        UniqueConstraint(
+            "participant_id",
+            "template_id",
+            name="uq_certificates_participant_template",
+        ),
     )
 
 

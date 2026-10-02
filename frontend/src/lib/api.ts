@@ -351,7 +351,13 @@ export const admin = {
 				body: formData,
 				credentials: 'include'
 			}).then((res) => res.json());
-		}
+		},
+
+		issue: (eventId: string, regenerate = false) =>
+			request<{ success: boolean; message: string }>(
+				`/admin/events/${eventId}/generate-certificates?regenerate=${regenerate}`,
+				{ method: 'POST' }
+			)
 	},
 
 	campaigns: {
@@ -467,11 +473,12 @@ export const publicApi = {
 	verifyCertificate: (code: string) =>
 		request<{
 			valid: boolean;
+			certificate_id?: string;
 			participant_name?: string;
 			event_name?: string;
 			rank?: number;
 			issued_at?: string;
-		}>(`/certificates/verify/${code}`)
+		}>(`/certificates/verify/${encodeURIComponent(code)}`)
 };
 
 export interface Event {
@@ -707,28 +714,35 @@ export interface CertificateTemplate {
 	description?: string;
 	background_image: string;
 	output_format: string;
+	certificate_prefix: string;
 	width: number;
 	height: number;
 	text_zones: TextZone[];
-	qr_zone?: QRZone;
+	qr_zone?: QRZone | null;
 	is_default: boolean;
 	created_at: string;
 }
 
 export interface TextZone {
+	id?: string;
 	field: string;
 	x: number;
 	y: number;
+	width?: number;
+	height?: number;
 	font_size?: number;
 	font_family?: string;
 	color?: string;
+	font_color?: string;
 	alignment?: 'left' | 'center' | 'right';
+	is_percentage?: boolean;
 }
 
 export interface QRZone {
 	x: number;
 	y: number;
 	size: number;
+	is_percentage?: boolean;
 }
 
 export interface CertificateTemplateCreate {
@@ -737,10 +751,11 @@ export interface CertificateTemplateCreate {
 	description?: string;
 	background_image?: string;
 	output_format?: string;
+	certificate_prefix?: string;
 	width?: number;
 	height?: number;
 	text_zones?: TextZone[];
-	qr_zone?: QRZone;
+	qr_zone?: QRZone | null;
 	is_default?: boolean;
 }
 
@@ -753,7 +768,7 @@ export interface Certificate {
 	verification_code: string;
 	certificate_type: string;
 	file_url?: string;
-	format?: string;
+	format?: 'png' | 'pdf';
 	generated_at?: string;
 	downloaded_at?: string;
 	download_count: number;

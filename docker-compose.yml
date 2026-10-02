@@ -46,7 +46,7 @@ services:
     volumes:
       - ./backend:/app
       - storage_data:/app/storage
-      - ./fonts:/app/fonts:ro
+      - ./frontend/static/fonts:/app/fonts:ro
     ports:
       - "8001:8000"
     depends_on:
@@ -72,7 +72,7 @@ services:
     volumes:
       - ./backend:/app
       - storage_data:/app/storage
-      - ./fonts:/app/fonts:ro
+      - ./frontend/static/fonts:/app/fonts:ro
     depends_on:
       db:
         condition: service_healthy
