@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -16,6 +16,7 @@ settings = get_settings()
 
 async def bootstrap_application() -> None:
     async with get_session_context() as db:
+        await db.execute(select(func.pg_advisory_xact_lock(945871203)))
         await create_admin_user(db)
         await create_default_email_templates(db)
         await initialize_system_settings(db)
