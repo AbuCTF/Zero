@@ -194,7 +194,7 @@ async def process_campaign_task(ctx: Dict[str, Any], campaign_id: str):
 
         orchestrator = EmailOrchestrator(redis)
 
-        sent = 0
+        sent = len(already_sent_ids)
         failed = 0
 
         for participant in participants:
@@ -269,8 +269,7 @@ async def process_campaign_task(ctx: Dict[str, Any], campaign_id: str):
             campaign.sent_count = sent
             campaign.failed_count = failed
 
-            if (sent + failed) % 10 == 0:
-                await db.commit()
+            await db.commit()
 
             # pace to avoid overwhelming providers
             await asyncio.sleep(0.1)
@@ -925,8 +924,7 @@ class WorkerSettings:
     on_startup = startup
     on_shutdown = shutdown
     
-    # jobs may run up to 1 hour
-    job_timeout = 3600
+    job_timeout = 14400
 
     # keep results for 1 day
     keep_result = 86400
