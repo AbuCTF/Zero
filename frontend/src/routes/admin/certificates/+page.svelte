@@ -87,6 +87,12 @@
     let selectedZone = $state<string | null>(null);
     let previewCanvas = $state<HTMLDivElement>();
     let dragging = $state<{ kind: 'text'; id: string } | { kind: 'qr' } | null>(null);
+    let testTemplate = $state<CertificateTemplate | null>(null);
+    let testName = $state('Sample Participant');
+    let testPreviewUrl = $state<string | null>(null);
+    let testRendering = $state(false);
+
+    const MAX_CERTIFICATE_NAME_LENGTH = 80;
 
     onMount(() => {
         const move = (event: PointerEvent) => moveDesignerItem(event);
@@ -342,6 +348,42 @@
         if (!eventId) return 'Global';
         return events.find((event) => event.id === eventId)?.name || 'Unknown';
     }
+
+    async function openTestPreview(template: CertificateTemplate) {
+        closeTestPreview();
+        testTemplate = template;
+        testName = 'Sample Participant';
+        await renderTestPreview();
+    }
+
+    function closeTestPreview() {
+        if (testPreviewUrl) URL.revokeObjectURL(testPreviewUrl);
+        testPreviewUrl = null;
+        testTemplate = null;
+    }
+
+    async function renderTestPreview() {
+        if (!testTemplate || !testName.trim()) return;
+        testRendering = true;
+        error = '';
+        try {
+            const blob = await api.admin.certificateTemplates.render(testTemplate.id, testName.trim(), 'png');
+            if (testPreviewUrl) URL.revokeObjectURL(testPreviewUrl);
+            testPreviewUrl = URL.createObjectURL(blob);
+        } catch (e: any) {
+            error = e.message || 'Failed to render certificate preview';
+        } finally {
+            testRendering = false;
+        }
+    }
+
+    function downloadTestPreview() {
+        if (!testPreviewUrl || !testTemplate) return;
+        const link = document.createElement('a');
+        link.href = testPreviewUrl;
+        link.download = `${testTemplate.name.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase() || 'certificate'}-preview.png`;
+        link.click();
+    }
 </script>
 
 <svelte:head>
@@ -414,6 +456,12 @@
                                 </p>
                             </div>
                             <div class="flex items-center gap-1">
+                                <button
+                                    onclick={() => openTestPreview(template)}
+                                    class="btn btn-ghost btn-sm"
+                                >
+                                    Test output
+                                </button>
                                 {#if template.event_id && template.is_default}
                                     <button
                                         onclick={() => issueCertificates(template)}
@@ -799,6 +847,64 @@
                 >
                     {saving ? 'Saving...' : (editingTemplate ? 'Update Template' : 'Create Template')}
                 </button>
+            </div>
+        </div>
+    </div>
+{/if}
+
+{#if testTemplate}
+    <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div class="bg-card rounded-xl shadow-xl w-full max-w-5xl max-h-[94vh] overflow-hidden flex flex-col">
+            <div class="px-6 py-4 border-b border-border flex items-center justify-between">
+                <div>
+                    <h2 class="text-lg font-semibold">Test certificate output</h2>
+                    <p class="text-sm text-foreground-muted mt-0.5">Rendered by the same generator used for participant downloads.</p>
+                </div>
+                <button onclick={closeTestPreview} class="btn btn-ghost btn-sm" aria-label="Close">✕</button>
+            </div>
+            <div class="flex-1 overflow-y-auto p-6 space-y-4">
+                <div class="flex flex-col sm:flex-row sm:items-end gap-3">
+                    <div class="flex-1">
+                        <div class="flex items-center justify-between mb-1.5">
+                            <label for="test-certificate-name" class="text-sm font-medium">Name on certificate</label>
+                            <span class="text-xs text-foreground-muted">{testName.length}/{MAX_CERTIFICATE_NAME_LENGTH}</span>
+                        </div>
+                        <input
+                            id="test-certificate-name"
+                            bind:value={testName}
+                            maxlength={MAX_CERTIFICATE_NAME_LENGTH}
+                            class="input w-full"
+                            placeholder="Enter any sample name"
+                        />
+                    </div>
+                    <button
+                        class="btn btn-secondary"
+                        onclick={renderTestPreview}
+                        disabled={testRendering || !testName.trim()}
+                    >
+                        {testRendering ? 'Rendering...' : 'Refresh preview'}
+                    </button>
+                    <button
+                        class="btn btn-primary"
+                        onclick={downloadTestPreview}
+                        disabled={!testPreviewUrl || testRendering}
+                    >
+                        Download preview
+                    </button>
+                </div>
+
+                <div
+                    class="relative overflow-hidden rounded-lg border border-border bg-muted"
+                    style="aspect-ratio: {testTemplate.width}/{testTemplate.height}"
+                >
+                    {#if testRendering && !testPreviewUrl}
+                        <div class="absolute inset-0 grid place-items-center text-sm text-foreground-muted">Rendering certificate...</div>
+                    {:else if testPreviewUrl}
+                        <img src={testPreviewUrl} alt="Rendered certificate test output" class="h-full w-full object-contain" />
+                    {:else}
+                        <div class="absolute inset-0 grid place-items-center text-sm text-foreground-muted">Preview unavailable</div>
+                    {/if}
+                </div>
             </div>
         </div>
     </div>

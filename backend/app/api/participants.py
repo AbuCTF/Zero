@@ -749,6 +749,8 @@ async def get_participant_certificates(
             "certificate_type": cert_type,
             "file_url": file_url,
             "format": output_format,
+            "width": template.width if template else 1600,
+            "height": template.height if template else 900,
             "display_name": c.display_name,
             "team_name": c.team_name,
             "rank": c.rank,
@@ -945,6 +947,132 @@ async def download_certificate(
         certificate.file_path,
         media_type=media_type,
         filename=filename,
+    )
+
+
+@router.get("/me/certificates/{cert_id}/preview")
+async def preview_certificate(
+    cert_id: str,
+    participant: Participant = Depends(require_verified_participant),
+    db: AsyncSession = Depends(get_session),
+    redis=Depends(get_redis),
+):
+    from pathlib import Path
+    from tempfile import TemporaryDirectory
+    from uuid import UUID as PyUUID
+    import os
+
+    from app.models import CertificateTemplate
+    from app.services.certificates import CertificateData, CertificateGenerator, QRZone, TextZone
+
+    rate_key = f"cert_preview:{participant.id}:minute"
+    current_count = await redis.incr(rate_key)
+    if current_count == 1:
+        await redis.expire(rate_key, 60)
+    if current_count > 30:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many preview requests. Please wait a minute before trying again.",
+        )
+
+    try:
+        cert_uuid = PyUUID(cert_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid certificate ID",
+        )
+
+    result = await db.execute(
+        select(Certificate).where(
+            Certificate.id == cert_uuid,
+            Certificate.participant_id == participant.id,
+        )
+    )
+    certificate = result.scalar_one_or_none()
+    if not certificate:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Certificate not found",
+        )
+
+    result = await db.execute(
+        select(CertificateTemplate).where(CertificateTemplate.id == certificate.template_id)
+    )
+    template = result.scalar_one_or_none()
+    if not template:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Certificate template not found",
+        )
+
+    template_path = template.template_file
+    if template_path and not template_path.startswith("/"):
+        template_path = os.path.join(settings.upload_dir, template_path)
+    if not template_path or not os.path.exists(template_path):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Certificate template image not found",
+        )
+
+    result = await db.execute(select(Event).where(Event.id == participant.event_id))
+    event = result.scalar_one_or_none()
+    text_zones = [
+        TextZone(
+            id=zone.get("id", ""),
+            field=zone.get("field", ""),
+            x=zone.get("x", 0),
+            y=zone.get("y", 0),
+            width=zone.get("width", 100),
+            height=zone.get("height", 50),
+            font_family=zone.get("font_family", "Helvetica"),
+            font_size=zone.get("font_size", 24),
+            font_color=zone.get("font_color") or zone.get("color", "#000000"),
+            alignment=zone.get("alignment", "center"),
+            is_percentage=zone.get("is_percentage", True),
+        )
+        for zone in (template.text_zones or [])
+    ]
+    qr_zone = None
+    if template.qr_zone:
+        qr_zone = QRZone(
+            x=template.qr_zone.get("x", 0),
+            y=template.qr_zone.get("y", 0),
+            size=template.qr_zone.get("size", 100),
+            is_percentage=template.qr_zone.get("is_percentage", True),
+        )
+
+    cert_data = CertificateData(
+        participant_id=certificate.participant_id,
+        display_name=certificate.display_name or participant.name or participant.username or "Participant",
+        verification_code=certificate.verification_code,
+        team_name=certificate.team_name,
+        rank=certificate.rank,
+        score=participant.final_score,
+        event_name=event.name if event else "Event",
+        issued_at=certificate.created_at,
+    )
+
+    with TemporaryDirectory() as temp_dir:
+        generator = CertificateGenerator(output_dir=temp_dir)
+        generated = generator.generate_png(
+            template_path=template_path,
+            data=cert_data,
+            text_zones=text_zones,
+            qr_zone=qr_zone,
+            verification_url_base=f"{settings.app_url}/verify",
+        )
+        if not generated.success or not generated.file_path:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to generate certificate preview",
+            )
+        preview = Path(generated.file_path).read_bytes()
+
+    return Response(
+        content=preview,
+        media_type="image/png",
+        headers={"Cache-Control": "private, no-store"},
     )
 
 

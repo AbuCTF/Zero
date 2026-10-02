@@ -7,7 +7,7 @@ import pytest
 from PIL import Image
 from pydantic import ValidationError
 
-from app.schemas import CertificateCustomizeRequest, CertificateTemplateCreate
+from app.schemas import CertificateCustomizeRequest, CertificatePreviewRequest, CertificateTemplateCreate
 from app.services.certificates import (
     CertificateData,
     CertificateGenerator,
@@ -48,6 +48,9 @@ def test_certificate_name_is_normalized_and_bounded():
         CertificateCustomizeRequest(display_name=" ")
     with pytest.raises(ValidationError):
         CertificateCustomizeRequest(display_name="x" * 81)
+    assert CertificatePreviewRequest(display_name="  Sample   Name  ").display_name == "Sample Name"
+    with pytest.raises(ValidationError):
+        CertificatePreviewRequest(display_name="x" * 81)
 
 
 def test_template_zone_validation():

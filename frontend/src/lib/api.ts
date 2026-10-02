@@ -357,7 +357,21 @@ export const admin = {
 			request<{ success: boolean; message: string }>(
 				`/admin/events/${eventId}/generate-certificates?regenerate=${regenerate}`,
 				{ method: 'POST' }
-			)
+			),
+
+		render: async (id: string, displayName: string, format: 'png' | 'pdf' = 'png') => {
+			const response = await fetch(`${API_BASE}/admin/certificate-templates/${id}/render?format=${format}`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ display_name: displayName }),
+				credentials: 'include'
+			});
+			if (!response.ok) {
+				const body = await response.json().catch(() => ({}));
+				throw new Error(body.detail || 'Failed to render certificate');
+			}
+			return response.blob();
+		}
 	},
 
 	campaigns: {
@@ -466,7 +480,10 @@ export const participant = {
 		}),
 
 	downloadCertificate: (certId: string, format: 'png' | 'pdf' = 'png') =>
-		`${API_BASE}/participants/me/certificates/${certId}/download?format=${format}`
+		`${API_BASE}/participants/me/certificates/${certId}/download?format=${format}`,
+
+	previewCertificate: (certId: string, revision = 0) =>
+		`${API_BASE}/participants/me/certificates/${certId}/preview?v=${revision}`
 };
 
 export const publicApi = {
@@ -769,6 +786,8 @@ export interface Certificate {
 	certificate_type: string;
 	file_url?: string;
 	format?: 'png' | 'pdf';
+	width?: number;
+	height?: number;
 	generated_at?: string;
 	downloaded_at?: string;
 	download_count: number;

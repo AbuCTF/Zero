@@ -293,11 +293,11 @@ Thank you for playing!
         <div style="background:#ffffff;border:1px solid #e7e5e4;border-radius:12px;padding:32px;">
             <h1 style="font-size:24px;margin:0 0 20px;">Your participation certificate is ready</h1>
             <p>Hello <strong>{{ name }}</strong>,</p>
-            <p>Thank you for participating in {{ event_name }}. Confirm the name that should appear on your certificate, then download it from your participant portal.</p>
+            <p>Thank you for participating in {{ event_name }}. Open the certificate page, review the name shown in the preview and use Edit once if it needs to be corrected. Download the certificate only after the name is correct.</p>
             <p style="margin:28px 0;">
                 <a href="{{ certificate_url }}" style="display:inline-block;background:#18181b;color:#ffffff;text-decoration:none;padding:12px 20px;border-radius:7px;font-weight:600;">View certificate</a>
             </p>
-            <p style="font-size:13px;color:#78716c;margin-bottom:0;">The name can be changed once before the first download.</p>
+            <p style="font-size:13px;color:#78716c;margin-bottom:0;">You can change the name once on the certificate page. The first download locks it permanently.</p>
         </div>
     </div>
 </body>
@@ -308,10 +308,10 @@ Hello {{ name }},
 
 Thank you for participating in {{ event_name }}. Your participation certificate is ready.
 
-Confirm the name that should appear on it, then download it here:
+Open the certificate page and review the name shown in the preview. If it needs to be corrected, use Edit before downloading:
 {{ certificate_url }}
 
-The name can be changed once before the first download.
+You can change the name once on the certificate page. The first download locks it permanently.
         """,
         "variables": ["name", "event_name", "certificate_url"],
     },

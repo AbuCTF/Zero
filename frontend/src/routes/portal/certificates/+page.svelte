@@ -9,6 +9,9 @@
     let editingCertId = $state<string | null>(null);
     let editName = $state('');
     let saving = $state(false);
+    let previewErrors = $state<Record<string, boolean>>({});
+
+    const MAX_CERTIFICATE_NAME_LENGTH = 80;
 
     onMount(async () => {
         await loadCertificates();
@@ -18,6 +21,7 @@
         loading = true;
         try {
             certificates = await api.participant.certificates();
+            previewErrors = {};
         } catch (e: any) {
             error = e.message || 'Failed to load certificates';
         } finally {
@@ -52,9 +56,12 @@
         try {
             const result = await api.participant.updateCertificateName(certId, editName.trim());
             if (result.success) {
-                certificates = certificates.map(c => 
-                    c.id === certId ? { ...c, display_name: result.display_name } : c
+                certificates = certificates.map(c =>
+                    c.id === certId
+                        ? { ...c, display_name: result.display_name, edit_count: (c.edit_count ?? 0) + 1 }
+                        : c
                 );
+                previewErrors = { ...previewErrors, [certId]: false };
                 editingCertId = null;
                 editName = '';
             }
@@ -62,6 +69,13 @@
             error = e.message || 'Failed to update display name';
         } finally {
             saving = false;
+        }
+    }
+
+    function confirmDownload(event: MouseEvent, cert: Certificate) {
+        if (cert.name_locked) return;
+        if (!confirm(`Download this certificate with the name “${cert.display_name}”? Your name will be locked after the first download.`)) {
+            event.preventDefault();
         }
     }
 </script>
@@ -74,7 +88,7 @@
     <div>
         <h1 class="text-2xl font-semibold">Certificates</h1>
         <p class="text-sm text-foreground-muted mt-1">
-            Download and verify your participation certificates
+            Review your name, preview the final certificate, then download it
         </p>
     </div>
 
@@ -104,17 +118,32 @@
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {#each certificates as cert}
                 <div class="card overflow-hidden">
-                    <div class="aspect-video bg-muted relative">
-                        <div class="absolute inset-0 flex flex-col items-center justify-center">
+                    <div
+                        class="bg-muted relative overflow-hidden"
+                        style="aspect-ratio: {cert.width || 1600} / {cert.height || 900}"
+                    >
+                        {#if !previewErrors[cert.id]}
+                            <img
+                                src={api.participant.previewCertificate(cert.id, cert.edit_count ?? 0)}
+                                alt="Personalized certificate preview for {cert.display_name}"
+                                class="absolute inset-0 h-full w-full object-contain"
+                                onerror={() => previewErrors = { ...previewErrors, [cert.id]: true }}
+                            />
+                        {:else}
+                            <div class="absolute inset-0 flex flex-col items-center justify-center p-4 text-center">
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 text-foreground-muted/50 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                             </svg>
-                            <span class="text-sm font-medium text-foreground-muted">{cert.display_name}</span>
-                            {#if cert.rank}
-                                <span class="text-xs text-foreground-muted">Rank #{cert.rank}</span>
-                            {/if}
+                                <span class="text-sm font-medium text-foreground-muted">Preview unavailable</span>
+                                <button
+                                    class="btn btn-ghost btn-sm mt-2"
+                                    onclick={() => previewErrors = { ...previewErrors, [cert.id]: false }}
+                                >
+                                    Retry
+                                </button>
+                            </div>
+                        {/if}
                         </div>
-                    </div>
                     
                     <div class="p-4">
                         <div class="flex items-start justify-between mb-2">
@@ -146,28 +175,36 @@
                                 {/if}
                             </div>
                             {#if editingCertId === cert.id}
-                                <div class="flex gap-2">
+                                <div class="space-y-2">
                                     <input 
                                         type="text"
                                         bind:value={editName}
-                                        class="input input-sm flex-1 text-sm"
+                                        class="input input-sm w-full text-sm"
                                         placeholder="Enter your full name"
+                                        maxlength={MAX_CERTIFICATE_NAME_LENGTH}
                                         disabled={saving}
                                     />
-                                    <button 
-                                        class="btn btn-primary btn-sm"
-                                        onclick={() => saveDisplayName(cert.id)}
-                                        disabled={saving || !editName.trim()}
-                                    >
-                                        {saving ? '...' : 'Save'}
-                                    </button>
-                                    <button 
-                                        class="btn btn-secondary btn-sm"
-                                        onclick={cancelEditing}
-                                        disabled={saving}
-                                    >
-                                        ✕
-                                    </button>
+                                    <div class="flex items-center justify-between gap-2">
+                                        <span class="text-xs text-foreground-muted">
+                                            {editName.length}/{MAX_CERTIFICATE_NAME_LENGTH}
+                                        </span>
+                                        <div class="flex gap-2">
+                                            <button
+                                                class="btn btn-secondary btn-sm"
+                                                onclick={cancelEditing}
+                                                disabled={saving}
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button
+                                                class="btn btn-primary btn-sm"
+                                                onclick={() => saveDisplayName(cert.id)}
+                                                disabled={saving || !editName.trim()}
+                                            >
+                                                {saving ? 'Saving...' : 'Save name'}
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
                             {:else}
                                 <div class="flex items-center justify-between gap-2">
@@ -197,6 +234,7 @@
                                 href={api.participant.downloadCertificate(cert.id, cert.format || 'png')}
                                 download
                                 class="btn btn-primary btn-sm flex-1"
+                                onclick={(event) => confirmDownload(event, cert)}
                             >
                                 Download {cert.format?.toUpperCase() || 'PNG'}
                             </a>

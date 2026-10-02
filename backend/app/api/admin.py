@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import func, select
@@ -48,6 +48,7 @@ from app.schemas import (
     CampaignCreate,
     CampaignResponse,
     CertificateTemplateCreate,
+    CertificatePreviewRequest,
     CertificateTemplateResponse,
     CertificateTemplateUpdate,
     DashboardStats,
@@ -2270,10 +2271,10 @@ async def get_certificate_template(
         select(CertificateTemplate).where(CertificateTemplate.id == template_id)
     )
     template = result.scalar_one_or_none()
-    
+
     if not template:
         raise HTTPException(status_code=404, detail="Template not found")
-    
+
     return CertificateTemplateResponse(
         id=template.id,
         event_id=template.event_id,
@@ -2292,6 +2293,96 @@ async def get_certificate_template(
         is_active=template.is_active,
         is_default=template.is_default,
         created_at=template.created_at,
+    )
+
+
+@router.post("/certificate-templates/{template_id}/render")
+async def render_certificate_template(
+    template_id: UUID,
+    data: CertificatePreviewRequest,
+    format: str = Query("png", pattern="^(png|pdf)$"),
+    user: User = Depends(require_organizer),
+    db: AsyncSession = Depends(get_session),
+):
+    import os
+    from tempfile import TemporaryDirectory
+
+    from app.services.certificates import CertificateData, CertificateGenerator, QRZone, TextZone
+
+    result = await db.execute(
+        select(CertificateTemplate).where(CertificateTemplate.id == template_id)
+    )
+    template = result.scalar_one_or_none()
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    template_path = template.template_file
+    if template_path and not template_path.startswith("/"):
+        template_path = os.path.join(settings.upload_dir, template_path)
+    if not template_path or not os.path.exists(template_path):
+        raise HTTPException(status_code=404, detail="Certificate template image not found")
+
+    event = None
+    if template.event_id:
+        result = await db.execute(select(Event).where(Event.id == template.event_id))
+        event = result.scalar_one_or_none()
+
+    text_zones = [
+        TextZone(
+            id=zone.get("id", ""),
+            field=zone.get("field", ""),
+            x=zone.get("x", 0),
+            y=zone.get("y", 0),
+            width=zone.get("width", 100),
+            height=zone.get("height", 50),
+            font_family=zone.get("font_family", "Helvetica"),
+            font_size=zone.get("font_size", 24),
+            font_color=zone.get("font_color") or zone.get("color", "#000000"),
+            alignment=zone.get("alignment", "center"),
+            is_percentage=zone.get("is_percentage", True),
+        )
+        for zone in (template.text_zones or [])
+    ]
+    qr_zone = None
+    if template.qr_zone:
+        qr_zone = QRZone(
+            x=template.qr_zone.get("x", 0),
+            y=template.qr_zone.get("y", 0),
+            size=template.qr_zone.get("size", 100),
+            is_percentage=template.qr_zone.get("is_percentage", True),
+        )
+
+    verification_code = generate_random_certificate_code(template.certificate_prefix)
+    cert_data = CertificateData(
+        participant_id=user.id,
+        display_name=data.display_name,
+        verification_code=verification_code,
+        event_name=event.name if event else "Event Name",
+        issued_at=datetime.utcnow(),
+    )
+
+    with TemporaryDirectory() as temp_dir:
+        generator = CertificateGenerator(output_dir=temp_dir)
+        generate = generator.generate_pdf if format == "pdf" else generator.generate_png
+        generated = generate(
+            template_path=template_path,
+            data=cert_data,
+            text_zones=text_zones,
+            qr_zone=qr_zone,
+            verification_url_base=f"{settings.app_url}/verify",
+        )
+        if not generated.success or not generated.file_path:
+            raise HTTPException(status_code=500, detail="Failed to render certificate")
+        rendered = Path(generated.file_path).read_bytes()
+
+    media_type = "application/pdf" if format == "pdf" else "image/png"
+    return Response(
+        content=rendered,
+        media_type=media_type,
+        headers={
+            "Cache-Control": "private, no-store",
+            "Content-Disposition": f'inline; filename="certificate-preview.{format}"',
+        },
     )
 
 

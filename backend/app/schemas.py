@@ -618,7 +618,15 @@ class CertificateCustomizeRequest(BaseModel):
 
 
 class CertificatePreviewRequest(BaseModel):
-    display_name: str = Field(..., min_length=1, max_length=255)
+    display_name: str = Field(..., min_length=1, max_length=80)
+
+    @field_validator("display_name")
+    @classmethod
+    def validate_display_name(cls, value: str) -> str:
+        normalized = " ".join(value.split())
+        if not normalized or any(ord(character) < 32 for character in normalized):
+            raise ValueError("Enter a valid name")
+        return normalized
 
 
 class CertificateResponse(BaseModel):
