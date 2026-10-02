@@ -850,7 +850,7 @@
                         <div 
                             bind:this={previewCanvas}
                             class="certificate-canvas relative bg-muted rounded-lg overflow-hidden border border-border select-none"
-                            style="aspect-ratio: {form.width}/{form.height}; container-type: inline-size; background-image: {showAlignmentGrid ? 'linear-gradient(to right, color-mix(in srgb, currentColor 12%, transparent) 1px, transparent 1px), linear-gradient(to bottom, color-mix(in srgb, currentColor 12%, transparent) 1px, transparent 1px)' : 'none'}; background-size: 5% 5%;"
+                            style="aspect-ratio: {form.width}/{form.height}; container-type: inline-size;"
                         >
                             {#if previewImage}
                                 <img 
@@ -858,6 +858,12 @@
                                     alt="Certificate preview"
                                     class="w-full h-full object-contain"
                                 />
+                                {#if showAlignmentGrid}
+                                    <div
+                                        class="pointer-events-none absolute inset-0"
+                                        style="background-image: linear-gradient(to right, rgb(37 99 235 / 18%) 1px, transparent 1px), linear-gradient(to bottom, rgb(37 99 235 / 18%) 1px, transparent 1px); background-size: 5% 5%;"
+                                    ></div>
+                                {/if}
                                 {#each form.text_zones as zone}
                                     <button
                                         type="button"
