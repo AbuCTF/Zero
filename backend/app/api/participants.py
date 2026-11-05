@@ -7,7 +7,7 @@ import uuid
 from jose import jwt
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, EmailStr
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import (
@@ -699,26 +699,35 @@ async def get_participant_prizes(
     return response
 
 
+async def _email_sibling_participant_ids(db: AsyncSession, participant: Participant) -> list:
+    """every participant id sharing this participant's email. one person can hold accounts in
+    several events under one email (e.g. quals + finals), so this is how a single login surfaces
+    all of their certificates."""
+    rows = await db.execute(
+        select(Participant.id).where(func.lower(Participant.email) == participant.email.lower())
+    )
+    return list(rows.scalars().all())
+
+
 @router.get("/me/certificates")
 async def get_participant_certificates(
     participant: Participant = Depends(require_verified_participant),
     db: AsyncSession = Depends(get_session),
 ):
-    """get certificates issued to the current participant."""
+    """get certificates issued to the current participant (across every event they hold under this email)."""
     from app.models import CertificateTemplate
-    result = await db.execute(
-        select(Certificate).where(Certificate.participant_id == participant.id)
-    )
-    certificates = list(result.scalars().all())
-    
-    event_result = await db.execute(
-        select(Event).where(Event.id == participant.event_id)
-    )
-    event = event_result.scalar_one_or_none()
-    event_name = event.name if event else "Unknown Event"
-    
+    # one person can hold accounts in several events under the same email (e.g. a finalist who
+    # also played quals); surface every certificate on that email, each labelled by its own event.
+    rows = (await db.execute(
+        select(Certificate, Event.id, Event.name)
+        .join(Participant, Certificate.participant_id == Participant.id)
+        .join(Event, Participant.event_id == Event.id)
+        .where(func.lower(Participant.email) == participant.email.lower())
+        .order_by(Certificate.created_at.desc())
+    )).all()
+
     cert_list = []
-    for c in certificates:
+    for c, _ev_id, _ev_name in rows:
         template_result = await db.execute(
             select(CertificateTemplate).where(CertificateTemplate.id == c.template_id)
         )
@@ -742,8 +751,8 @@ async def get_participant_certificates(
         cert_list.append({
             "id": str(c.id),
             "participant_id": str(c.participant_id),
-            "event_id": str(participant.event_id),
-            "event_name": event_name,
+            "event_id": str(_ev_id),
+            "event_name": _ev_name,
             "template_id": str(c.template_id) if c.template_id else None,
             "verification_code": c.verification_code,
             "certificate_type": cert_type,
@@ -818,20 +827,29 @@ async def download_certificate(
             detail="Invalid certificate ID",
         )
     
+    sibling_ids = await _email_sibling_participant_ids(db, participant)
     result = await db.execute(
         select(Certificate).where(
             Certificate.id == cert_uuid,
-            Certificate.participant_id == participant.id,
+            Certificate.participant_id.in_(sibling_ids),
         ).with_for_update()
     )
     certificate = result.scalar_one_or_none()
-    
+
     if not certificate:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Certificate not found",
         )
-    
+
+    # the certificate may belong to a sibling account (same email, different event); use its
+    # owner for any regeneration so event name / fallback name / score come out right.
+    cert_owner = participant
+    if certificate.participant_id != participant.id:
+        cert_owner = (await db.execute(
+            select(Participant).where(Participant.id == certificate.participant_id)
+        )).scalar_one_or_none() or participant
+
     # fetch template first to decide whether regeneration is needed
     result = await db.execute(
         select(CertificateTemplate).where(CertificateTemplate.id == certificate.template_id)
@@ -863,10 +881,10 @@ async def download_certificate(
             )
         
         result = await db.execute(
-            select(Event).where(Event.id == participant.event_id)
+            select(Event).where(Event.id == cert_owner.event_id)
         )
         event = result.scalar_one_or_none()
-        
+
         text_zones = []
         if template.text_zones:
             for zone_config in template.text_zones:
@@ -895,15 +913,15 @@ async def download_certificate(
         
         cert_data = CertificateData(
             participant_id=certificate.participant_id,
-            display_name=certificate.display_name or participant.name or participant.username or "Participant",
+            display_name=certificate.display_name or cert_owner.name or cert_owner.username or "Participant",
             verification_code=certificate.verification_code,
             team_name=certificate.team_name,
             rank=certificate.rank,
-            score=participant.final_score,
+            score=cert_owner.final_score,
             event_name=event.name if event else "Event",
             issued_at=certificate.created_at,
         )
-        
+
         generator = CertificateGenerator()
         verify_url = f"{settings.app_url}/verify"
         
@@ -983,10 +1001,11 @@ async def preview_certificate(
             detail="Invalid certificate ID",
         )
 
+    sibling_ids = await _email_sibling_participant_ids(db, participant)
     result = await db.execute(
         select(Certificate).where(
             Certificate.id == cert_uuid,
-            Certificate.participant_id == participant.id,
+            Certificate.participant_id.in_(sibling_ids),
         )
     )
     certificate = result.scalar_one_or_none()
@@ -995,6 +1014,12 @@ async def preview_certificate(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Certificate not found",
         )
+
+    cert_owner = participant
+    if certificate.participant_id != participant.id:
+        cert_owner = (await db.execute(
+            select(Participant).where(Participant.id == certificate.participant_id)
+        )).scalar_one_or_none() or participant
 
     result = await db.execute(
         select(CertificateTemplate).where(CertificateTemplate.id == certificate.template_id)
@@ -1015,7 +1040,7 @@ async def preview_certificate(
             detail="Certificate template image not found",
         )
 
-    result = await db.execute(select(Event).where(Event.id == participant.event_id))
+    result = await db.execute(select(Event).where(Event.id == cert_owner.event_id))
     event = result.scalar_one_or_none()
     text_zones = [
         TextZone(
@@ -1044,11 +1069,11 @@ async def preview_certificate(
 
     cert_data = CertificateData(
         participant_id=certificate.participant_id,
-        display_name=certificate.display_name or participant.name or participant.username or "Participant",
+        display_name=certificate.display_name or cert_owner.name or cert_owner.username or "Participant",
         verification_code=certificate.verification_code,
         team_name=certificate.team_name,
         rank=certificate.rank,
-        score=participant.final_score,
+        score=cert_owner.final_score,
         event_name=event.name if event else "Event",
         issued_at=certificate.created_at,
     )
@@ -1096,20 +1121,21 @@ async def update_certificate_display_name(
             detail="Invalid certificate ID",
         )
     
+    sibling_ids = await _email_sibling_participant_ids(db, participant)
     result = await db.execute(
         select(Certificate).where(
             Certificate.id == cert_uuid,
-            Certificate.participant_id == participant.id,
+            Certificate.participant_id.in_(sibling_ids),
         ).with_for_update()
     )
     certificate = result.scalar_one_or_none()
-    
+
     if not certificate:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Certificate not found",
         )
-    
+
     if certificate.name_locked:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
