@@ -6,7 +6,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import (
@@ -235,11 +235,19 @@ async def login(
             },
         )
     
-    # find participant by email across all events
+    # a person can hold accounts in several events under one email (e.g. quals + finals), so
+    # the email is not unique. match the password against each candidate and log in to the one
+    # it belongs to; never let a duplicate email error the login.
     result = await db.execute(
-        select(Participant).where(Participant.email == data.email.lower())
+        select(Participant)
+        .where(func.lower(Participant.email) == data.email.lower())
+        .order_by(Participant.created_at.asc())
     )
-    participant = result.scalar_one_or_none()
+    candidates = result.scalars().all()
+    participant = next(
+        (c for c in candidates if verify_password(data.password, c.password_hash)),
+        None,
+    ) or (candidates[0] if candidates else None)
 
     if participant:
         if participant.locked_until and participant.locked_until > datetime.now(timezone.utc):

@@ -5,7 +5,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import FileResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_client_ip, require_verified_participant
@@ -37,17 +37,23 @@ async def list_certificates(
     participant: Participant = Depends(require_verified_participant),
     db: AsyncSession = Depends(get_session),
 ):
+    # one person can hold accounts in several events under the same email (e.g. a finalist
+    # who also played quals); surface every certificate on that email so a single login shows
+    # all of them, labelled by event.
     result = await db.execute(
-        select(Certificate)
-        .where(Certificate.participant_id == participant.id)
+        select(Certificate, Event.name)
+        .join(Participant, Certificate.participant_id == Participant.id)
+        .join(Event, Participant.event_id == Event.id)
+        .where(func.lower(Participant.email) == participant.email.lower())
         .order_by(Certificate.created_at.desc())
     )
-    certificates = result.scalars().all()
-    
+    rows = result.all()
+
     return {
         "certificates": [
             {
                 "id": str(c.id),
+                "event_name": event_name,
                 "display_name": c.display_name,
                 "team_name": c.team_name,
                 "rank": c.rank,
@@ -55,7 +61,7 @@ async def list_certificates(
                 "generated_at": c.generated_at.isoformat() if c.generated_at else None,
                 "download_count": c.download_count,
             }
-            for c in certificates
+            for c, event_name in rows
         ]
     }
 
@@ -268,10 +274,19 @@ async def download_certificate(
     participant: Participant = Depends(require_verified_participant),
     db: AsyncSession = Depends(get_session),
 ):
+    # allow downloading any certificate that belongs to an account sharing this email,
+    # so a finalist can pull both their quals and finals certs from one login.
+    sibling_ids = (
+        await db.execute(
+            select(Participant.id).where(
+                func.lower(Participant.email) == participant.email.lower()
+            )
+        )
+    ).scalars().all()
     result = await db.execute(
         select(Certificate).where(
             Certificate.verification_code == normalize_certificate_code(verification_code),
-            Certificate.participant_id == participant.id,
+            Certificate.participant_id.in_(sibling_ids),
         )
     )
     cert = result.scalar_one_or_none()
